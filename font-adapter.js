@@ -138,14 +138,18 @@ export async function loadFontAdapter(fontController, glyphNames) {
           .then((variableGlyph) => {
             const glyph = variableGlyph?.glyph ?? variableGlyph;
             if (glyph?.sources) {
+              const at = glyph.sources.map((source) => [
+                source,
+                fontSourceOfGlyphSource(fontController, source),
+              ]);
               ownSources.set(
                 glyphName,
-                new Set(glyph.sources.map((source) => source.locationBase).filter((base) => base))
+                new Set(at.map(([, identifier]) => identifier).filter((identifier) => identifier))
               );
-              for (const source of glyph.sources) {
+              for (const [source, identifier] of at) {
                 const customData = glyph.layers?.[source.layerName]?.customData;
-                if (source.locationBase && customData) {
-                  layerCustomData.set(instanceKey(glyphName, source.locationBase), customData);
+                if (identifier && customData) {
+                  layerCustomData.set(instanceKey(glyphName, identifier), customData);
                 }
               }
             }
@@ -244,10 +248,55 @@ export async function loadFontAdapter(fontController, glyphNames) {
   };
 }
 
-/** The layer of an existing glyph that belongs to a font source. */
-export function layerNameForSource(variableGlyph, sourceIdentifier) {
+/**
+ * The font source a glyph source stands at, or null. A glyph source made in
+ * Fontra names it (`locationBase`); one written with a location and no
+ * locationBase — a UFO imported before Fontra wrote locationBase, the Glyphs
+ * and rcjk backends — stands at the font source that has the same location
+ * on the font's axes. Only the font's axes count: fontrahive.com, 9 November,
+ * a font without axes whose single source still said `{weight: 400}` and
+ * whose glyph sources said `{}` — « 101 with no layer in some source »,
+ * Place anchors writing nothing. A sparse source is taken only when no real
+ * one stands there.
+ */
+export function fontSourceOfGlyphSource(fontController, glyphSource) {
+  if (!glyphSource) {
+    return null;
+  }
+  if (glyphSource.locationBase) {
+    return glyphSource.locationBase;
+  }
+  const fontSources = fontController?.sources;
+  if (!fontSources) {
+    return null;
+  }
+  const axes =
+    fontController.fontAxesSourceSpace ||
+    fontController.fontSourcesInstancer?.fontAxesSourceSpace ||
+    [];
+  const key = (location) =>
+    JSON.stringify(axes.map((axis) => location?.[axis.name] ?? axis.defaultValue ?? 0));
+  const wanted = key(glyphSource.location);
+  let sparse = null;
+  for (const [identifier, source] of Object.entries(fontSources)) {
+    if (key(source.location) !== wanted) {
+      continue;
+    }
+    if (!source.isSparse) {
+      return identifier;
+    }
+    sparse = sparse ?? identifier;
+  }
+  return sparse;
+}
+
+/**
+ * The layer of an existing glyph that belongs to a font source. Without the
+ * fontController, only glyph sources that name their font source are found.
+ */
+export function layerNameForSource(variableGlyph, sourceIdentifier, fontController = null) {
   for (const source of variableGlyph.sources || []) {
-    if (source.locationBase === sourceIdentifier) {
+    if (fontSourceOfGlyphSource(fontController, source) === sourceIdentifier) {
       return source.layerName;
     }
   }

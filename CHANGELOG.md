@@ -1,6 +1,22 @@
 # Changelog
 
-## 0.1.3 — unreleased
+## 0.1.4 — 9 November 2026
+
+- **Fonts whose glyph sources carry a location, not a `locationBase`** — a UFO imported before
+  Fontra wrote `locationBase`, the Glyphs and rcjk backends — were invisible to Place anchors,
+  Check, Make and Update: « 0 anchors written on 0 glyphs; 101 with no layer in some source » on
+  fontrahive.com, 9 November, on a single UFO without axes (its one source still saying
+  `{weight: 400}`, its glyph sources `{}`); Make would have added a second source per master to a
+  glyph it rewrote. A glyph source now belongs to the font source with the same location on the
+  font's axes — only the font's axes count —, a `locationBase` still winning when there is one.
+  Nothing changes for fonts Fontra wrote.
+- **A glyph drawn in some sources only** — a family where a master is sparse, MutatorSans and its
+  italic — was expected to carry anchors in every source: Place anchors planned the missing ones on
+  an interpolation and found no layer to write to; ③ and ④ counted those sources as not done. A
+  source the glyph has no layer of its own at is now left out of the plan, the check and the
+  states. Found on the way.
+
+## 0.1.3 — 9 November 2026
 
 - **The designer's words.** The panel says what you do or see, not what the code does
   (`claude/umarks-vocabulaire.md`, decided 9 Nov. 9:42). ② *Add 15 missing glyphs* (was *Create 15

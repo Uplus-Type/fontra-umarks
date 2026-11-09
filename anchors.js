@@ -433,6 +433,14 @@ function* expectations(font, glyphNames, presets, { roles = null, settings = {},
       if (sources && !sources.includes(source.identifier)) {
         continue;
       }
+      // A source the glyph has no layer of its own at — MutatorSans's italic,
+      // drawn for a handful of glyphs — is not expected to carry anchors: what
+      // getLayerGlyph gives there is an interpolation, nowhere to write
+      // (fontrahive.com, 9 November: « 101 with no layer in some source »,
+      // nothing placed).
+      if (font.hasOwnSource?.(glyphName, source.identifier) === false) {
+        continue;
+      }
       const layerGlyph = font.getLayerGlyph(glyphName, source.identifier);
       if (!layerGlyph) {
         continue;

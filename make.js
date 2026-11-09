@@ -299,7 +299,11 @@ export async function makeGlyph(
         if (!composedLayer) {
           continue;
         }
-        let layerName = layerNameForSource(variableGlyph, source.identifier);
+        let layerName = layerNameForSource(
+          variableGlyph,
+          source.identifier,
+          editorController.fontController
+        );
         let added = false;
         if (!layerName) {
           added = true;
@@ -386,7 +390,11 @@ export async function recomputeGlyph(editorController, glyphName, rule, adapter,
     (variableGlyph) => {
       for (const source of adapter.sources) {
         const expected = glyph.layers[source.identifier]?.glyph;
-        const layerName = layerNameForSource(variableGlyph, source.identifier);
+        const layerName = layerNameForSource(
+          variableGlyph,
+          source.identifier,
+          editorController.fontController
+        );
         const layerGlyph = layerName && variableGlyph.layers[layerName]?.glyph;
         if (!expected || !layerGlyph?.components) {
           continue;
@@ -617,7 +625,7 @@ export async function applyAnchorPlan(
     await sceneController.editNamedGlyphAndRecordChanges(glyphName, (variableGlyph) => {
       edited = true;
       for (const entry of items) {
-        const layerName = layerNameForSource(variableGlyph, entry.source);
+        const layerName = layerNameForSource(variableGlyph, entry.source, fontController);
         const layerGlyph = layerName && variableGlyph.layers[layerName]?.glyph;
         if (!layerGlyph) {
           result.noLayer.push({ glyph: glyphName, source: entry.source });
@@ -761,7 +769,7 @@ export async function createEmptyGlyphs(editorController, entries, label) {
       const LayerClass = firstLayer?.constructor;
       const SourceClass = variableGlyph.sources[0]?.constructor;
       for (const source of sources) {
-        if (layerNameForSource(variableGlyph, source.identifier)) {
+        if (layerNameForSource(variableGlyph, source.identifier, fontController)) {
           continue;
         }
         const glyphSource = {
