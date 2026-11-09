@@ -1,0 +1,5 @@
+{
+  "name": "U+Marks",
+  "init": "init.js",
+  "function": "init"
+}
