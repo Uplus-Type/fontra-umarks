@@ -1,6 +1,21 @@
 # Changelog
 
-## 0.1.1 — unreleased
+## 0.1.2 — unreleased
+
+- Nothing written into the font's `customData` holds a `null` any more: a from-scratch glyph set
+  has no `from`, a document without an active glyph set has no `activeTarget`. A `.fontra` file
+  kept nulls without complaint, but a UFO's `lib.plist` cannot hold one — fontTools refused with
+  « unsupported type », Fontra showed « The data could not be saved » and reverted the edit,
+  now and then, when a glyph set was added. Reading puts the nulls back.
+
+- The *Add a glyph set…* dialog scrolls: Fontra's dialog keeps its content cell from
+  overflowing, so the list lives in a scrolling child of it.
+
+- The foot of the panel says which U+Marks this is (« U+Marks 0.1.2 »), for bug reports. One
+  version number in `version.js`, `plugin.json`, `pyproject.toml` and the CHANGELOG, kept equal by
+  a test.
+
+## 0.1.1 — 2026-11-09
 
 - « Target » is now **Glyph set**, wherever it is read: the ① line, the messages, the
   Edit… dialog, the first pass, the guide, the README. The document keeps `targets` and

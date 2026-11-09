@@ -1,5 +1,6 @@
 {
   "name": "U+Marks",
   "init": "init.js",
-  "function": "init"
+  "function": "init",
+  "version": "0.1.2"
 }

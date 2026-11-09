@@ -37,6 +37,7 @@ import {
   shiftAnchors,
 } from "./anchors.js";
 import { guideURLFor } from "./guide-url.js";
+import { VERSION } from "./version.js";
 import { AnchorsView } from "./anchors-view.js";
 import { LEGACY_REFERENCE, MADE_KEY, composeVariableGlyph, isLegacyRule, syncDetails } from "./compose.js";
 import {
@@ -383,6 +384,8 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
             this.lastElement,
             this.undoButton,
           ]),
+          // the version, small, for the bug reports: « which U+Marks were you looking at? »
+          element("div", { class: "umarks-version", "data-role": "version", text: `U+Marks ${VERSION}` }),
         ]),
       ]);
       return content;
@@ -1046,7 +1049,11 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       });
       const scratch = row("scratch", "From scratch", null, "an empty glyph set: you add its glyphs in Edit…");
 
+      // Fontra's dialog gives its content cell `overflow: hidden` (modal-dialog.js,
+      // `.message`), with more weight than a class of ours: the part that scrolls
+      // is a child of it, not the content element itself
       const content = element("div", { class: "umarks-add-dialog" }, [
+        element("div", { class: "umarks-add-scroll" }, [
         group("project", "Project glyph sets", projectRows, "None in this project yet."),
         group("mine", "My glyph sets", mineRows, "None yet — Fontra keeps yours under Settings › Glyph sets."),
         element("section", { class: "umarks-add-group", "data-group": "presets" }, [
@@ -1057,6 +1064,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
             : [element("div", { class: "umarks-add-empty", text: "Fontra's presets could not be loaded." })]),
         ]),
         group("scratch", "From scratch", [scratch.label], ""),
+        ]),
       ]);
 
       await dialog.setupDialog("Add a glyph set", "", [
@@ -1066,12 +1074,15 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       addButton = dialog.defaultButton;
       dialog.appendStyle?.(`
         .umarks-add-dialog {
-          display: grid;
-          gap: 1em;
           width: 34em;
           max-width: 80vw;
+        }
+        .umarks-add-scroll {
+          display: grid;
+          gap: 1em;
           max-height: calc(80vh - 10em);
-          overflow: auto;
+          overflow-y: auto;
+          padding-right: 0.5em;
         }
         .umarks-add-group { display: grid; gap: 0.2em; }
         .umarks-add-group h3 { margin: 0 0 0.2em; font-size: 1em; }

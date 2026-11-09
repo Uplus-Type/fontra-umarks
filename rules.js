@@ -341,6 +341,30 @@ export function canonicalJSON(value) {
  * reads them (normalized): what is about to be written against what the
  * document has, so that nothing is written that is already there (6b § 0).
  */
+/**
+ * The document as it is written into customData: a copy with no `null` and no
+ * `undefined` anywhere (a from-scratch glyph set has no `from`, a document
+ * without an active glyph set has no `activeTarget`, and so on). A `.fontra`
+ * file would keep a null, but a UFO's lib.plist cannot hold one — fontTools
+ * refuses with « unsupported type » and Fontra reverts the edit. Reading
+ * puts the nulls back (normalizeRulesData).
+ */
+export function storable(value) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== null && item !== undefined).map(storable);
+  }
+  if (isObject(value)) {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (item !== null && item !== undefined) {
+        out[key] = storable(item);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
 export function sameRulesData(a, b) {
   return canonicalJSON(normalizeRulesData(a).data) === canonicalJSON(normalizeRulesData(b).data);
 }

@@ -15,7 +15,7 @@
 import { PLACED_KEY, pathSignature } from "./anchors.js";
 import { MADE_KEY, composeVariableGlyph, isLegacyRule, syncDetails } from "./compose.js";
 import { fontSources, layerNameForSource } from "./font-adapter.js";
-import { RULES_KEY, normalizeRulesData, readRulesData, sameRulesData } from "./rules.js";
+import { RULES_KEY, normalizeRulesData, readRulesData, sameRulesData, storable } from "./rules.js";
 
 /** The code point a new composed glyph should carry. */
 export function codePointFor(glyphName, { glyphData, glyphSetEntry } = {}) {
@@ -33,7 +33,8 @@ export async function writeRules(fontController, data, label = "Accent rules") {
     return false;
   }
   await fontController.performEdit(label, "customData", (root) => {
-    root.customData[RULES_KEY] = data;
+    // no null anywhere: a UFO's lib.plist cannot hold one (rules.js, storable)
+    root.customData[RULES_KEY] = storable(data);
   });
   return true;
 }
@@ -61,7 +62,7 @@ function rememberAnchors(layer, composedLayer) {
   if (!layer.customData) {
     layer.customData = {};
   }
-  layer.customData[MADE_KEY] = JSON.parse(JSON.stringify(made));
+  layer.customData[MADE_KEY] = storable(JSON.parse(JSON.stringify(made)));
 }
 
 function round(value) {
@@ -896,7 +897,7 @@ export async function undoLastBatch(editorController) {
           }
           const customData = { ...(layer.customData || {}) };
           if (Object.keys(notes).length) {
-            customData[PLACED_KEY] = notes;
+            customData[PLACED_KEY] = storable(notes);
           } else {
             delete customData[PLACED_KEY];
           }

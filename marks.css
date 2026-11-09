@@ -858,3 +858,12 @@ input.umarks-name,
 .umarks-tip .umarks-tip-close:hover {
   opacity: 1;
 }
+
+/* the version, in the foot: small and muted, never italic */
+.umarks-version {
+  font-size: 0.8em;
+  opacity: 0.5;
+  text-align: right;
+  padding-top: 0.3em;
+  font-variant-numeric: tabular-nums;
+}
