@@ -148,14 +148,16 @@ function stringList(value) {
 
 /**
  * Where a target starts from: `{preset: <url of a Fontra preset>}`,
- * `{projectGlyphSet: <key>}`, or null — from scratch.
+ * `{projectGlyphSet: <key>}`, or null — from scratch. The key of a project
+ * glyph set may be the empty string: that is Fontra's « This font's glyphs »
+ * (THIS_FONTS_GLYPHSET in glyphsets-controller.js), a real source.
  */
 export function normalizeTargetFrom(raw) {
   if (isObject(raw)) {
     if (typeof raw.preset === "string" && raw.preset) {
       return { preset: raw.preset };
     }
-    if (typeof raw.projectGlyphSet === "string" && raw.projectGlyphSet) {
+    if (typeof raw.projectGlyphSet === "string") {
       return { projectGlyphSet: raw.projectGlyphSet };
     }
   }
@@ -168,10 +170,10 @@ export function normalizeTargetFrom(raw) {
  */
 export function normalizeTarget(key, raw) {
   if (typeof key !== "string" || !key) {
-    return { target: null, complaints: ["a target without a key, dropped"] };
+    return { target: null, complaints: ["a glyph set without a key, dropped"] };
   }
   if (!isObject(raw)) {
-    return { target: null, complaints: [`target ${key}: not an object, dropped`] };
+    return { target: null, complaints: [`glyph set ${key}: not an object, dropped`] };
   }
   return {
     target: {
@@ -404,14 +406,58 @@ export function withTarget(data, key, target, { activate = false } = {}) {
   };
 }
 
+/** Do two sources (`from`) name the same glyph set? From scratch (null) is the same as no source. */
+export function sameFrom(a, b) {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+/** Does the menu have a glyph set from this source already? From scratch never is: there can be several. */
+export function glyphSetInMenu(targets, from) {
+  return !!from && Object.values(targets || {}).some((target) => sameFrom(target.from, from));
+}
+
+/**
+ * A copy with glyph sets added to the menu (6c, decision 3): `picks` is
+ * [{name, from}], in the order they were listed in. The first one added
+ * becomes the active glyph set; one whose source the menu has already is left
+ * out. Nothing but `targets` and `activeTarget` changes — no rule, no glyph.
+ * Returns {data, added: [{key, name, from}]}.
+ */
+export function withGlyphSets(data, picks) {
+  let next = data;
+  const added = [];
+  for (const { name, from = null } of picks) {
+    if (glyphSetInMenu(next.targets, from)) {
+      continue;
+    }
+    const key = newTargetKey(name, next.targets);
+    next = withTarget(next, key, { name, from, add: [], remove: [] }, { activate: !added.length });
+    added.push({ key, name, from });
+  }
+  return { data: next, added };
+}
+
 export function withActiveTarget(data, key) {
   return { ...data, activeTarget: key && key in (data.targets || {}) ? key : null };
 }
 
+/**
+ * A copy without one glyph set of the menu (6c, decision 4): only its entry of
+ * `targets` goes — no rule, no glyph. When it was the active one, the next
+ * takes over (the one after it in the menu, the one before for the last), and
+ * `null` once the menu is empty.
+ */
 export function withoutTarget(data, key) {
+  const keys = Object.keys(data.targets || {});
   const targets = { ...data.targets };
   delete targets[key];
-  return { ...data, targets, activeTarget: data.activeTarget === key ? null : data.activeTarget };
+  let active = data.activeTarget;
+  if (active === key) {
+    const rest = keys.filter((other) => other !== key);
+    const index = keys.indexOf(key);
+    active = rest[Math.min(index, rest.length - 1)] ?? null;
+  }
+  return { ...data, targets, activeTarget: active };
 }
 
 /** The active target, {key, ...target}, or null. */
@@ -619,7 +665,7 @@ export function importSummary(label, result) {
   if (result.targets.length) {
     const renamed = result.targets.filter((target) => target.renamedFrom);
     parts.push(
-      `${result.targets.length} target${result.targets.length === 1 ? "" : "s"} added` +
+      `${result.targets.length} glyph set${result.targets.length === 1 ? "" : "s"} added` +
         (renamed.length ? ` (${renamed.map((target) => `${target.renamedFrom} → ${target.key}`).join(", ")})` : "")
     );
   }

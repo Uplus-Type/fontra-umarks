@@ -230,7 +230,7 @@ export class AnchorsView {
     const note = (text) => element("div", { class: "umarks-note", text });
 
     return {
-      check: group("check", note("Compares the anchors ticked in ③ with their positions, on the target.")),
+      check: group("check", note("Compares the anchors ticked in ③ with their positions, on the glyph set.")),
       move: group(
         "move",
         row(labelled("anchor", inputs.moveName), labelled("dx", inputs.moveDx), labelled("dy", inputs.moveDy))

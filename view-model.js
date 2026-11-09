@@ -185,7 +185,7 @@ function reach(entries) {
  */
 export function placeSentence({ presetNames = [], plan = [], kept = [], skipped = [], glyphCount = null }) {
   if (glyphCount === 0) {
-    return { text: "No glyph to work on: no drawn glyph of the target lacks these anchors.", ready: false };
+    return { text: "No glyph to work on: no drawn glyph of the glyph set lacks these anchors.", ready: false };
   }
   if (!presetNames.length) {
     return { text: "Tick the anchors to place.", ready: false };

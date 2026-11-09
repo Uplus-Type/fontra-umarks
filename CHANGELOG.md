@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.1.1 — unreleased
+
+- « Target » is now **Glyph set**, wherever it is read: the ① line, the messages, the
+  Edit… dialog, the first pass, the guide, the README. The document keeps `targets` and
+  `activeTarget`: nothing to migrate.
+- ①'s menu lists only the glyph sets chosen for this font, and *Add a glyph set…* (the only
+  entry on a new font). That entry opens a dialog: Project glyph sets, My glyph sets,
+  Fontra presets (by family, with a filter), then From scratch; several can be ticked, the first
+  added becomes active, one already in the menu is greyed.
+- *Edit…* has *Remove this glyph set* (it was *Delete*): only the menu entry goes, no rule and no
+  glyph; the active one passes to the next.
+- A glyph set of your own (Settings › Glyph sets) is kept as `from: {preset: <url>}`; another
+  browser without it reads the URL as a plain list of glyph names.
+
+- No faux italic anywhere in the panel: Fontra ships no italic of its UI font, so help and
+  state texts are told apart by a muted colour, not by `font-style: italic`. A test keeps it
+  that way (`tests/test_no_faux_italic.mjs`).
+
+- Fontra's « This font's glyphs » — the project glyph set every font has, keyed by the empty
+  string — is a glyph set like the others: it can be added to the menu, and it lists every glyph of
+  the font with its code points. It used to be read as « from scratch ».
+
+- The `?` opens the guide where it can be read: next to the plug-in when Hive, Pak or a local
+  server serves it; on GitHub Pages (`https://uplus-type.github.io/fontra-umarks/guide/`) when
+  the plug-in is loaded from jsDelivr, which serves `.html` as plain text.
+
 ## 0.1.0 — 2026-11-09
 
 The first release: the panel ①–⑥, the ghosts on the canvas, the rules from

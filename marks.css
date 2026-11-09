@@ -178,9 +178,10 @@
   opacity: 1;
 }
 
-/* ⑤ drawn by hand: done, kept apart, ticked only to be overwritten */
+/* ⑤ drawn by hand: done, kept apart, ticked only to be overwritten — muted, never italic
+   (Fontra ships no italic of its UI font: the browser would fake one) */
 .umarks-glyph-row--drawn .umarks-row-name {
-  font-style: italic;
+  opacity: 0.7;
 }
 
 .umarks-subheading {
@@ -261,7 +262,6 @@
 .umarks-busy {
   font-size: 0.85em;
   opacity: 0.7;
-  font-style: italic;
 }
 
 /* `hidden` wins over the display of our own classes — and only of ours: the
@@ -303,7 +303,6 @@ button[hidden] {
 
 .umarks-empty {
   opacity: 0.55;
-  font-style: italic;
   padding: 0.4em 0;
 }
 
@@ -545,7 +544,6 @@ button[hidden] {
 .umarks-note {
   font-size: 0.85em;
   opacity: 0.75;
-  font-style: italic;
 }
 
 /* ③: one line per position */

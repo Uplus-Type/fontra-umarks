@@ -2,7 +2,7 @@
 // bottom, one line per step, each with what it counts, one action, and a fold
 // with the glyphs concerned.
 //
-//   ① Target   [ GF Latin Core ▾ ] + 3 − 1   [Edit…] [… ▾]
+//   ① Glyph set   [ GF Latin Core ▾ ] + 3 − 1   [Edit…] [… ▾]
 //              239 glyphs · 180 for U+Marks (120 to compose, 60 parts) · 150 done
 //   ▸ ② Draw      8 not in the font yet · 10 still empty   [Create 8 empty]
 //   ▸ ③ Anchors   11 drawn glyphs without their anchors   [Place anchors]
@@ -49,7 +49,7 @@ export class PathView {
   }
 
   build() {
-    // ① the target: a menu, our own list, Edit…
+    // ① the glyph set: a menu of the ones chosen for this font (and Add a glyph set…), our own list, Edit…
     this.targetSelect = element("select", {
       "data-field": "target",
       title: "The glyph set you want to end up with",
@@ -58,7 +58,7 @@ export class PathView {
     this.targetList = element("span", { class: "umarks-target-list", "data-role": "target-list" });
     this.editButton = button("Edit…", () => this.callbacks.onEdit?.(), {
       className: "umarks-button--small",
-      title: "Name the target, add glyphs to it or take some out",
+      title: "Name the glyph set, add glyphs to it or take some out, or remove it from the menu",
     });
     // `…`: Fontra's own menu (6a, decision 4) — export the rules, import a
     // file of rules, whatever wrote it
@@ -99,7 +99,7 @@ export class PathView {
     ]);
     this.targetElement = element("div", { class: "umarks-target", "data-step": "target" }, [
       element("div", { class: "umarks-target-line" }, [
-        element("span", { class: "umarks-step-name", text: "① Target" }),
+        element("span", { class: "umarks-step-name", text: "① Glyph set" }),
         this.targetSelect,
         this.targetList,
         this.editButton,
@@ -154,7 +154,11 @@ export class PathView {
 
   // --- ①
 
-  /** `groups`: [{label, options: [{value, label}]}]; a group without label is plain options. */
+  /**
+   * `groups`: [{label, options: [{value, label, placeholder}]}]; a group without
+   * label is plain options. A `placeholder` option is what the closed menu
+   * reads while nothing is chosen: it is not in the list that opens.
+   */
   setTargetOptions(groups, value) {
     const key = JSON.stringify([groups, value]);
     if (key === this.targetOptionsKey) {
@@ -164,7 +168,12 @@ export class PathView {
     const children = [];
     for (const group of groups) {
       const options = group.options.map((option) =>
-        element("option", { value: option.value, text: option.label })
+        element("option", {
+          value: option.value,
+          text: option.label,
+          hidden: option.placeholder ? "" : undefined,
+          disabled: option.placeholder ? "" : undefined,
+        })
       );
       if (group.label) {
         children.push(element("optgroup", { label: group.label }, options));

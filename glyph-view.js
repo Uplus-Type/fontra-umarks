@@ -21,8 +21,8 @@ import { button, element, replaceChildren, select } from "./ui.js";
 const STATUS_MARKS = { made: "✓", "to-make": "○", possible: "·" };
 const STATUS_TITLES = {
   made: "made: in the font",
-  "to-make": "in the target, to make",
-  possible: "possible, not in the target",
+  "to-make": "in the glyph set, to make",
+  possible: "possible, not in the glyph set",
 };
 
 function provenanceBadge(rule) {
@@ -82,11 +82,11 @@ export class GlyphView {
   heading(info) {
     const what = { composed: "composed", base: "base", mark: "accent" }[info.kind] || "";
     const where = info.inTarget
-      ? "in the target"
+      ? "in the glyph set"
       : info.partOfTarget
-        ? "used by the target"
+        ? "used by the glyph set"
         : info.hasTarget
-          ? "not in the target"
+          ? "not in the glyph set"
           : null;
     const parts = [what, where, info.stateText]
       .filter((text) => text)
@@ -263,7 +263,7 @@ export class GlyphView {
           : element("span", { class: "umarks-note", text: "nothing yet: its anchors and the font's accents say what" }),
       ]),
       chips.length
-        ? element("div", { class: "umarks-legend", text: "✓ made · ○ to make · dashed: not in the target" })
+        ? element("div", { class: "umarks-legend", text: "✓ made · ○ to make · dashed: not in the glyph set" })
         : null,
       selected ? this.composableDetail(selected, info) : null,
       info.anchorComposes?.length ? this.anchorComposesBlock(info) : null,
@@ -301,7 +301,7 @@ export class GlyphView {
       ),
       element("div", {
         class: "umarks-legend",
-        text: "Not Unicode's: a click writes the rule, by hand, into the target",
+        text: "Not Unicode's: a click writes the rule, by hand, into the glyph set",
       }),
     ]);
   }
@@ -355,7 +355,7 @@ export class GlyphView {
       element("div", { class: "umarks-buttons" }, [
         info.hasTarget
           ? button(
-              entry.inTarget ? "Take out of the target" : "Add to the target",
+              entry.inTarget ? "Take out of the glyph set" : "Add to the glyph set",
               () => this.callbacks.onToggleTarget?.(entry.glyph, !entry.inTarget),
               { className: "umarks-button--small" }
             )

@@ -129,7 +129,40 @@ export function targetEntries(baseEntries, target, context = {}) {
   return entries;
 }
 
-/** The target's own list as it reads next to the menu: `+ 3 − 1`, or "". */
+/** The values of ①'s menu: one per glyph set of the menu, and Add a glyph set…. */
+export const GLYPH_SET_MENU = {
+  target: (key) => `target:${key}`,
+  addGlyphSet: "add-glyph-set",
+};
+
+/**
+ * ①'s menu (6c, decision 2): `{groups, value}`, groups of
+ * [{label?, options: [{value, label, placeholder?}]}]. Only the glyph sets
+ * chosen for this font — the active one is `value` — and, last, Add a glyph
+ * set…. A new font has no other entry; the closed menu then reads a
+ * `placeholder`, which is not in the list that opens.
+ */
+export function glyphSetMenu(data) {
+  const groups = [];
+  const targets = Object.entries(data?.targets || {});
+  if (!data?.activeTarget) {
+    groups.push({
+      options: [{ value: "", label: targets.length ? "Choose a glyph set…" : "No glyph set yet", placeholder: true }],
+    });
+  }
+  if (targets.length) {
+    groups.push({
+      options: targets.map(([key, target]) => ({
+        value: GLYPH_SET_MENU.target(key),
+        label: [target.name, listLabel(target)].filter((text) => text).join(" "),
+      })),
+    });
+  }
+  groups.push({ options: [{ value: GLYPH_SET_MENU.addGlyphSet, label: "Add a glyph set…" }] });
+  return { groups, value: data?.activeTarget ? GLYPH_SET_MENU.target(data.activeTarget) : "" };
+}
+
+/** The glyph set's own list as it reads next to the menu: `+ 3 − 1`, or "". */
 export function listLabel(target) {
   const parts = [];
   if (target?.add?.length) {

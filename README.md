@@ -3,7 +3,7 @@
 **U+Marks** is a free [Fontra](https://fontra.xyz) plug-in by [U+Type](https://uplustype.com) that builds the accented glyphs of a font from its anchors.
 
 - You draw the bases and the accents once; U+Marks composes é, Ǻ, ệ… as components, each accent placed anchor to anchor, in every source.
-- It works from a target — the glyph set you want to end up with — and shows, line by line, what is left to draw, to anchor, to make.
+- It works from a glyph set — the one you want to end up with — and shows, line by line, what is left to draw, to anchor, to make.
 - The rules come from Unicode, from the glyphs your font already has, and from your anchors; you can change any of them, and they travel with the font.
 - On the canvas, a base shows the accents its anchors will receive while you move them.
 - After a Make, it keeps watching: when an anchor moves, it says which glyphs to recompute, and by how much.
@@ -23,7 +23,7 @@ The panel is the ◌ tab of the right sidebar.
 
 ## The path
 
-1. **Target** — the glyph set you want to end up with: a Fontra preset, a glyph set of the project, or from scratch.
+1. **Glyph set** — the glyph set you want to end up with: one of your project's, one of yours, a Fontra preset, or from scratch.
 2. **Draw** — what the rules need and the font lacks. *Create N empty*.
 3. **Anchors** — the drawn glyphs without their anchors, and where each anchor goes. *Place anchors*.
 4. **Check** — anchors out of date since Place put them, and anchors moved by hand. *Re-place N*.

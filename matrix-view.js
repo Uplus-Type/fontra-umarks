@@ -28,7 +28,7 @@ export class MatrixView {
     this.markLists = element("div", { class: "umarks-matrix-list", "data-list": "matrix-marks" });
     this.scopeSelect = select(
       [
-        { value: "target", label: `the target's (${lists.bases.target.length})` },
+        { value: "target", label: `the glyph set's (${lists.bases.target.length})` },
         { value: "font", label: `the font's (${lists.bases.font.length})` },
       ],
       this.baseScope,
@@ -37,7 +37,7 @@ export class MatrixView {
         this.drawList("bases");
         this.changed();
       },
-      { title: "Bases from the target, or from the whole font" }
+      { title: "Bases from the glyph set, or from the whole font" }
     );
     this.scopeSelect.dataset.field = "matrix-base-scope";
     this.anchorSelect = select([], "", () => this.changed(), { title: "The anchor every ticked base and mark has" });
@@ -54,7 +54,7 @@ export class MatrixView {
     this.preview = element("span", { class: "umarks-matrix-preview", "data-role": "matrix-preview" });
     this.addButton = button("Add", () => this.callbacks.onAdd?.(this.state()), {
       className: "umarks-button--small",
-      title: "Write these rules, by hand, and put their glyphs into the target",
+      title: "Write these rules, by hand, and put their glyphs into the glyph set",
     });
     this.addButton.dataset.action = "matrix-add";
     this.addButton.disabled = true;

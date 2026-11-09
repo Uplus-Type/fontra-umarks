@@ -36,6 +36,7 @@ import {
   referencedGlyphs,
   shiftAnchors,
 } from "./anchors.js";
+import { guideURLFor } from "./guide-url.js";
 import { AnchorsView } from "./anchors-view.js";
 import { LEGACY_REFERENCE, MADE_KEY, composeVariableGlyph, isLegacyRule, syncDetails } from "./compose.js";
 import {
@@ -76,10 +77,11 @@ import {
   importRulesFile,
   importSummary,
   mergeLegacyImport,
-  newTargetKey,
   readRulesData,
   rulesFileKind,
   sameRulesData,
+  withGlyphSets,
+  glyphSetInMenu,
   withActiveTarget,
   withAnchors,
   withRule,
@@ -102,6 +104,8 @@ import {
   DEFAULT_NAME_PATTERN,
   demandedParts,
   composablesFor,
+  GLYPH_SET_MENU,
+  glyphSetMenu,
   isCharacterItem,
   itemGlyph,
   listLabel,
@@ -153,15 +157,6 @@ const REFRESH_DELAY = 200; // ms: a burst of changes is looked at once
 const REFRESH_DELAY_MAX = 2000; // ms: however slow the last refresh was
 const PRESETS_URL = "/data/glyphset-presets.json";
 
-/** The menu value of each kind of entry of ①. */
-const TARGET_VALUE = {
-  target: (key) => `target:${key}`,
-  preset: (url) => `preset:${url}`,
-  project: (key) => `project:${key}`,
-  scratch: "scratch",
-  addGlyphSet: "add-glyph-set",
-};
-
 // the messages of the first pass the designer closed: theirs, in the browser
 const CLOSED_TIPS_KEY = "umarks.firstPass.closed";
 
@@ -180,10 +175,6 @@ function writeClosedTips(ids) {
   } catch (error) {
     // a browser that keeps nothing: the message comes back next time
   }
-}
-
-function sameFrom(a, b) {
-  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
@@ -399,7 +390,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
 
     /** The guide, next to the plug-in's files: /umarks/guide/, jsDelivr, Hive (6b § 2). */
     get guideURL() {
-      return `${pluginPath}/guide/index.html`;
+      return guideURLFor(pluginPath);
     }
 
     // --- data
@@ -455,13 +446,20 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       return this.sceneController.sceneSettings.projectGlyphSets || {};
     }
 
+    /** The glyph sets the designer added in Fontra (Settings › Glyph sets), kept by Fontra in the browser: {url: info}. */
+    get myGlyphSets() {
+      return this.sceneController.sceneSettings.myGlyphSets || {};
+    }
+
     /** The name a `from` reads as: the preset's, the glyph set's, or « From scratch ». */
     fromLabel(from) {
       if (from?.preset) {
-        return this.presetFor(from.preset)?.glyphSet.name ?? from.preset;
+        // a preset of Fontra's list, or one of the designer's own, which Fontra keys by its URL
+        return this.presetFor(from.preset)?.glyphSet.name ?? this.myGlyphSets[from.preset]?.name ?? from.preset;
       }
-      if (from?.projectGlyphSet) {
-        return this.projectGlyphSets[from.projectGlyphSet]?.name ?? from.projectGlyphSet;
+      if (typeof from?.projectGlyphSet === "string") {
+        // the key "" is Fontra's « This font's glyphs »
+        return this.projectGlyphSets[from.projectGlyphSet]?.name ?? (from.projectGlyphSet || "This font's glyphs");
       }
       return "From scratch";
     }
@@ -481,8 +479,17 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
         const found = this.presetFor(from.preset);
         info = found
           ? { ...found.collection.dataOptions, ...found.glyphSet }
-          : { url: from.preset, dataFormat: "glyph-names" };
-      } else if (from.projectGlyphSet) {
+          : this.myGlyphSets[from.preset] || { url: from.preset, dataFormat: "glyph-names" };
+      } else if (from.projectGlyphSet === "") {
+        // Fontra's « This font's glyphs » (THIS_FONTS_GLYPHSET): every glyph of the
+        // font, with its code points — Fontra's loader has no URL to fetch for it
+        const glyphMap = this.fontController.glyphMap || {};
+        return {
+          entries: Object.keys(glyphMap)
+            .sort()
+            .map((glyphName) => ({ glyphName, codePoints: [...(glyphMap[glyphName] || [])] })),
+        };
+      } else if (typeof from.projectGlyphSet === "string") {
         info = this.projectGlyphSets[from.projectGlyphSet] || null;
         if (!info) {
           return { entries: [], error: `the project has no glyph set ${from.projectGlyphSet} any more` };
@@ -579,7 +586,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
         const key = changed.length ? canonicalJSON(next) : null;
         if (key && key !== this.lastProposal && !this.fontController.readOnly && !sameRulesData(next, data)) {
           this.lastProposal = key;
-          if (await writeRules(this.fontController, next, `Rules for ${plural(changed.length, "glyph")} of the target`)) {
+          if (await writeRules(this.fontController, next, `Rules for ${plural(changed.length, "glyph")} of the glyph set`)) {
             return; // the change of customData comes back here, with the rules in place
           }
         }
@@ -628,47 +635,13 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
 
     // --- drawing the path
 
+    /**
+     * ①'s menu (6c, decision 2): only the glyph sets chosen for this font — the
+     * active one ticked — and, last, Add a glyph set…. On a new font that is
+     * all it holds; the closed menu then reads « No glyph set yet ».
+     */
     targetMenu() {
-      const data = this.rulesData;
-      const groups = [];
-      const targets = Object.entries(data.targets || {});
-      if (!data.activeTarget) {
-        groups.push({ options: [{ value: "", label: "Choose a target…" }] });
-      }
-      if (targets.length) {
-        groups.push({
-          label: "Your targets",
-          options: targets.map(([key, target]) => ({
-            value: TARGET_VALUE.target(key),
-            label: [target.name, listLabel(target)].filter((text) => text).join(" "),
-          })),
-        });
-      }
-      for (const collection of this.presetCollections || []) {
-        groups.push({
-          label: collection.name,
-          options: (collection.glyphSets || []).map((glyphSet) => ({
-            value: TARGET_VALUE.preset(glyphSet.url),
-            label: glyphSet.name,
-          })),
-        });
-      }
-      const project = Object.entries(this.projectGlyphSets);
-      groups.push({
-        label: "This project",
-        options: [
-          ...project.map(([key, glyphSet]) => ({
-            value: TARGET_VALUE.project(key),
-            label: glyphSet.name || key,
-          })),
-          { value: TARGET_VALUE.scratch, label: "From scratch" },
-          { value: TARGET_VALUE.addGlyphSet, label: "Add a glyph set…" },
-        ],
-      });
-      return {
-        groups,
-        value: data.activeTarget ? TARGET_VALUE.target(data.activeTarget) : "",
-      };
+      return glyphSetMenu(this.rulesData);
     }
 
     selectedFor(step, all) {
@@ -696,7 +669,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       view.setTip(this.firstPassTip(target, status));
       if (!target || !status) {
         view.setTarget({
-          info: target ? "looking at the target…" : "Choose the glyph set you want to end up with.",
+          info: target ? "looking at the glyph set…" : "Add the glyph set you want to end up with.",
           canEdit: !!target,
         });
         for (const id of ["draw", "anchors", "check", "compose", "update"]) {
@@ -753,7 +726,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
             })),
           },
         ],
-        empty: "Everything the target needs is drawn.",
+        empty: "Everything the glyph set needs is drawn.",
       });
 
       // ③ Anchors
@@ -896,7 +869,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       const closed = readClosedTips();
       const tips = [];
       if (!target) {
-        tips.push({ id: "target", text: "Start by choosing a target — a preset, a glyph set of the project, or from scratch." });
+        tips.push({ id: "target", text: "Start by adding a glyph set — one of your project's, one of yours, or a preset of Fontra." });
       } else if (status) {
         const absent = status.draw.absent.length;
         if (absent || status.draw.empty.length) {
@@ -967,57 +940,172 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
     }
 
     async chooseTarget(value) {
-      const data = this.rulesData;
-      if (value === TARGET_VALUE.addGlyphSet) {
-        // Fontra's own place to add a glyph set, by URL or from its presets:
-        // the glyph search panel, whose Project glyph sets have a +
+      if (value === GLYPH_SET_MENU.addGlyphSet) {
+        // the menu stays on the active glyph set while the dialog is open
         this.pathView.targetOptionsKey = null;
         this.render();
-        const tab = document.querySelector('.sidebar-tab[data-sidebar-name="glyph-search"]');
-        if (!tab?.classList.contains("selected")) {
-          this.editorController.toggleSidebar?.("glyph-search", true);
-        }
-        this.report([
-          "Add the glyph set under Project glyph sets (+) in the glyph search panel; it then shows in this menu.",
-        ]);
+        await this.addGlyphSets();
         return;
       }
       if (value.startsWith("target:")) {
-        await this.writeData(withActiveTarget(data, value.slice("target:".length)), "Choose the target");
+        await this.writeData(withActiveTarget(this.rulesData, value.slice("target:".length)), "Choose the glyph set");
+      }
+    }
+
+    /**
+     * Add a glyph set… (6c, decision 3): Fontra's own dialog, three groups in
+     * this order — the project's glyph sets, the designer's own, Fontra's
+     * presets (folded by family, with a filter) — then From scratch. One or
+     * several are ticked; Add puts them in the menu, the first one becomes
+     * the active one. One the menu has already is greyed. Nothing is written
+     * into the font but their entries of `targets`: a glyph set keeps its
+     * source (`from`), so it follows Fontra when it changes there.
+     */
+    async addGlyphSets() {
+      const dialog = document.querySelector("modal-dialog");
+      if (!dialog) {
         return;
       }
-      let from = null;
-      if (value.startsWith("preset:")) {
-        from = { preset: value.slice("preset:".length) };
-      } else if (value.startsWith("project:")) {
-        from = { projectGlyphSet: value.slice("project:".length) };
-      } else if (value !== TARGET_VALUE.scratch) {
+      if (this.fontController.readOnly) {
+        this.report(["This font is read-only."]);
         return;
       }
-      // a target that is just this glyph set already: take it, don't make another
-      const existing =
-        from &&
-        Object.entries(data.targets).find(
-          ([, target]) => sameFrom(target.from, from) && !target.add.length && !target.remove.length
-        );
-      if (existing) {
-        await this.writeData(withActiveTarget(data, existing[0]), "Choose the target");
-        return;
+      if (!this.presetCollections) {
+        await this.loadPresets();
       }
-      const name = this.fromLabel(from);
-      const key = newTargetKey(name, data.targets);
-      await this.writeData(
-        withTarget(data, key, { name, from, add: [], remove: [] }, { activate: true }),
-        `New target ${name}`
+      const current = this.rulesData.targets;
+      const order = []; // the ids, in the order the dialog lists them: the order they are added in
+      const ticked = new Map(); // id → {name, from}
+      let addButton = null;
+      const update = () => addButton?.classList.toggle("disabled", !ticked.size);
+
+      const row = (id, name, from, note = "") => {
+        order.push(id);
+        const taken = glyphSetInMenu(current, from);
+        const input = element("input", { type: "checkbox", "data-glyph-set": id });
+        input.disabled = taken;
+        input.addEventListener("change", () => {
+          if (input.checked) {
+            ticked.set(id, { name, from });
+          } else {
+            ticked.delete(id);
+          }
+          update();
+        });
+        const label = element("label", { class: taken ? "umarks-add-taken" : "" }, [
+          input,
+          element("span", { text: name }),
+          taken || note ? element("span", { class: "umarks-add-note", text: taken ? "already in the menu" : note }) : null,
+        ]);
+        return { label, name };
+      };
+      const group = (id, title, children, empty) =>
+        element("section", { class: "umarks-add-group", "data-group": id }, [
+          element("h3", { text: title }),
+          ...(children.length ? children : [element("div", { class: "umarks-add-empty", text: empty })]),
+        ]);
+      const byName = (a, b) => String(a.name).localeCompare(String(b.name));
+      const named = (entries) =>
+        entries.map(([key, glyphSet]) => ({ key, name: glyphSet.name || key })).sort(byName);
+
+      const projectRows = named(Object.entries(this.projectGlyphSets)).map(({ key, name }) =>
+        row(`project:${key}`, name, { projectGlyphSet: key }).label
       );
-      if (!from) {
+      const mineRows = named(Object.entries(this.myGlyphSets)).map(({ key, name }) =>
+        row(`my:${key}`, name, { preset: key }).label
+      );
+      const families = (this.presetCollections || []).map((collection) => {
+        const rows = (collection.glyphSets || []).map((glyphSet) =>
+          row(`preset:${glyphSet.url}`, glyphSet.name, { preset: glyphSet.url })
+        );
+        const details = element("details", { class: "umarks-add-family", "data-family": collection.name }, [
+          element("summary", { text: `${collection.name} (${rows.length})` }),
+          ...rows.map((entry) => entry.label),
+        ]);
+        return { collection, rows, details };
+      });
+      const filter = element("input", {
+        type: "search",
+        placeholder: "Filter Fontra's presets",
+        spellcheck: "false",
+        "data-field": "glyph-set-filter",
+      });
+      filter.addEventListener("input", () => {
+        const needle = filter.value.trim().toLowerCase();
+        for (const { collection, rows, details } of families) {
+          const family = collection.name.toLowerCase().includes(needle);
+          let shown = 0;
+          rows.forEach((entry) => {
+            const match = !needle || family || entry.name.toLowerCase().includes(needle);
+            entry.label.hidden = !match;
+            shown += match ? 1 : 0;
+          });
+          details.hidden = !!needle && !shown;
+          details.open = !!needle && shown > 0;
+        }
+      });
+      const scratch = row("scratch", "From scratch", null, "an empty glyph set: you add its glyphs in Edit…");
+
+      const content = element("div", { class: "umarks-add-dialog" }, [
+        group("project", "Project glyph sets", projectRows, "None in this project yet."),
+        group("mine", "My glyph sets", mineRows, "None yet — Fontra keeps yours under Settings › Glyph sets."),
+        element("section", { class: "umarks-add-group", "data-group": "presets" }, [
+          element("h3", { text: "Fontra presets" }),
+          filter,
+          ...(families.length
+            ? families.map(({ details }) => details)
+            : [element("div", { class: "umarks-add-empty", text: "Fontra's presets could not be loaded." })]),
+        ]),
+        group("scratch", "From scratch", [scratch.label], ""),
+      ]);
+
+      await dialog.setupDialog("Add a glyph set", "", [
+        { title: "Cancel", isCancelButton: true },
+        { title: "Add", isDefaultButton: true, resultValue: "add", disabled: true },
+      ]);
+      addButton = dialog.defaultButton;
+      dialog.appendStyle?.(`
+        .umarks-add-dialog {
+          display: grid;
+          gap: 1em;
+          width: 34em;
+          max-width: 80vw;
+          max-height: calc(80vh - 10em);
+          overflow: auto;
+        }
+        .umarks-add-group { display: grid; gap: 0.2em; }
+        .umarks-add-group h3 { margin: 0 0 0.2em; font-size: 1em; }
+        .umarks-add-dialog label { display: flex; gap: 0.5em; align-items: baseline; }
+        .umarks-add-dialog label[hidden], .umarks-add-dialog details[hidden] { display: none; }
+        .umarks-add-taken { opacity: 0.5; }
+        .umarks-add-note, .umarks-add-empty { opacity: 0.6; }
+        .umarks-add-note { font-size: 0.9em; }
+        .umarks-add-dialog input[type="search"] { margin-bottom: 0.3em; }
+        .umarks-add-dialog summary { cursor: pointer; padding: 0.1em 0; }
+        .umarks-add-dialog details > label { margin-left: 1.3em; }
+      `);
+      dialog.setContent(content);
+      const result = await dialog.run();
+      if (result !== "add" || !ticked.size) {
+        return;
+      }
+
+      const picks = order.filter((id) => ticked.has(id)).map((id) => ticked.get(id));
+      const { data: next, added } = withGlyphSets(this.rulesData, picks);
+      if (!added.length) {
+        return;
+      }
+      await this.writeData(next, added.length === 1 ? `Add the glyph set ${added[0].name}` : `Add ${added.length} glyph sets`);
+      // From scratch, the first one: its glyphs are typed in Edit…, so it opens at once
+      if (!added[0].from) {
         await this.editTarget();
       }
     }
 
     /**
-     * Edit…: name the target, add glyphs (names, or characters typed as they
-     * are), take some out — in Fontra's own dialog, not a component of ours.
+     * Edit…: name the glyph set, add glyphs (names, or characters typed as they
+     * are), take some out — in Fontra's own dialog, not a component of ours —
+     * or remove it from the menu (6c, decision 4).
      */
     async editTarget() {
       const target = this.target;
@@ -1042,7 +1130,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       const content = element("div", { class: "umarks-target-dialog" }, [
         element("div", {
           class: "umarks-target-dialog-from",
-          text: target.from ? `Starts from ${this.fromLabel(target.from)}` : "Starts from scratch: the glyphs added here are the target",
+          text: target.from ? `Starts from ${this.fromLabel(target.from)}` : "Starts from scratch: the glyphs added here are the glyph set",
         }),
         nameLabel,
         nameInput,
@@ -1051,9 +1139,13 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
         removeLabel,
         removeInput,
         matrix.element,
+        element("div", {
+          class: "umarks-target-dialog-from",
+          text: "Remove this glyph set takes it out of the menu only: no rule and no glyph of the font is deleted.",
+        }),
       ]);
-      await dialog.setupDialog(`Target: ${target.name}`, "", [
-        { title: "Delete", resultValue: "delete" },
+      await dialog.setupDialog(`Glyph set: ${target.name}`, "", [
+        { title: "Remove this glyph set", resultValue: "remove" },
         { title: "Cancel", isCancelButton: true },
         { title: "Save", isDefaultButton: true, resultValue: "save" },
       ]);
@@ -1072,8 +1164,8 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       setTimeout(() => addInput.focus(), 0);
       const result = await dialog.run();
       const data = this.rulesData;
-      if (result === "delete") {
-        await this.writeData(withoutTarget(data, target.key), `Delete target ${target.name}`);
+      if (result === "remove") {
+        await this.writeData(withoutTarget(data, target.key), `Remove the glyph set ${target.name}`);
       } else if (result === "save") {
         await this.writeData(
           withTarget(data, target.key, {
@@ -1082,7 +1174,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
             add: parseTargetItems(addInput.value),
             remove: parseTargetItems(removeInput.value),
           }),
-          `Edit target ${target.name}`
+          `Edit glyph set ${target.name}`
         );
       }
     }
@@ -1167,7 +1259,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
             // the dialog's own list, so that Save keeps what Add put in
             const typed = parseTargetItems(addInput.value);
             addInput.value = [...typed, ...names.filter((name) => !typed.includes(name))].join(" ");
-            this.report([`${label}: ${plural(result.add.length, "rule")} written${names.length ? `, ${names.length} into the target` : ""}.`]);
+            this.report([`${label}: ${plural(result.add.length, "rule")} written${names.length ? `, ${names.length} into the glyph set` : ""}.`]);
             this.render();
             await look(view.state());
           },
@@ -1208,7 +1300,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       setTimeout(() => URL.revokeObjectURL(url), 10000);
       const data = this.rulesData;
       this.report([
-        `Exported ${plural(Object.keys(data.rules).length, "rule")} and ${plural(Object.keys(data.targets).length, "target")} to ${fileName}.`,
+        `Exported ${plural(Object.keys(data.rules).length, "rule")} and ${plural(Object.keys(data.targets).length, "glyph set")} to ${fileName}.`,
       ]);
     }
 
@@ -1837,7 +1929,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       const names = this.anchorScope();
       const nothing = (text) => ({ sentence: { text, ready: false } });
       if (!names.length) {
-        return nothing("No drawn glyph in the target yet.");
+        return nothing("No drawn glyph in the glyph set yet.");
       }
       const data = this.rulesData;
       const sources = fontSources(this.fontController);
@@ -2196,7 +2288,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       }
       await this.writeData(
         withTarget(this.rulesData, target.key, { ...target, add: added, remove: removed }),
-        `${add ? "Add" : "Take"} ${glyphName} ${add ? "to" : "out of"} the target`
+        `${add ? "Add" : "Take"} ${glyphName} ${add ? "to" : "out of"} the glyph set`
       );
     }
 
@@ -2244,7 +2336,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       }
       this.glyphView.openComposable(glyphName, { focusName: true });
       if (await this.writeData(next, `Rule ${glyphName} from the anchors`)) {
-        this.report([`${glyphName} = ${base} + ${mark} @ ${anchor}${target ? ", added to the target" : ""}.`]);
+        this.report([`${glyphName} = ${base} + ${mark} @ ${anchor}${target ? ", added to the glyph set" : ""}.`]);
       }
     }
 
