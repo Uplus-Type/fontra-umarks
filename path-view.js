@@ -3,12 +3,12 @@
 // with the glyphs concerned.
 //
 //   ① Glyph set   [ GF Latin Core ▾ ] + 3 − 1   [Edit…] [… ▾]
-//              239 glyphs · 180 for U+Marks (120 to compose, 60 parts) · 150 done
-//   ▸ ② Draw      8 not in the font yet · 10 still empty   [Create 8 empty]
-//   ▸ ③ Anchors   11 drawn glyphs without their anchors   [Place anchors]
-//   ▸ ④ Check     12 anchors out of date · 3 moved by hand  [Re-place 12]
-//   ▸ ⑤ Compose   38 ready · 3 impossible                [Make 38]
-//   ▸ ⑥ Update    3 out of date since the last Make      [Recompute 3]
+//              239 glyphs · 132 accented glyphs, built from 21 parts · 81 done
+//   ▸ ② Draw      15 glyphs to add · 6 still to draw (6 bases)  [Add 15 missing glyphs]
+//   ▸ ③ Anchors   11 drawn glyphs have no anchors yet   [Place anchors]
+//   ▸ ④ Check     2 anchors out of place · 3 moved by hand  [Re-place 2]
+//   ▸ ⑤ Compose   7 ready · 32 waiting for A, E to be drawn · 61 can't be built yet  [Make 7]
+//   ▸ ⑥ Update    8 glyphs have moved off their anchors  [Update 8]
 //
 // The folds are the items of Fontra's own `ui-accordion`, all closed when the
 // panel opens; a line with nothing left reads « done » in green, and folds.
@@ -128,10 +128,11 @@ export class PathView {
       action.disabled = true;
       const action_ = element("span", { class: "umarks-step-aux" }, [action]);
       action_.addEventListener("click", (event) => event.stopPropagation());
+      const note = element("div", { class: "umarks-note umarks-step-note", "data-note": step.id, hidden: "" });
       const list = element("div", { class: "umarks-glyph-list", "data-list": step.id });
       const extra = element("div", { class: "umarks-step-extra" });
-      const content = element("div", { class: "umarks-section-body umarks-step-body" }, [list, extra]);
-      this.steps[step.id] = { count, action, list, extra, done: null, nodes: new Map() };
+      const content = element("div", { class: "umarks-section-body umarks-step-body" }, [note, list, extra]);
+      this.steps[step.id] = { count, action, note, list, extra, done: null, nodes: new Map() };
       return {
         id: stepItemId(step.id),
         label,
@@ -257,10 +258,13 @@ export class PathView {
    * One line: `count` {text, done}, `action` {label, enabled, title},
    * `groups` [{title, rows: [{glyph, detail, selectable}]}], `extra` a node
    * shown under the list (the positions in ③, Adjust in ④), `empty` what the
-   * fold says when it lists nothing.
+   * fold says when it lists nothing, `note` a half line at the head of the
+   * fold (⑤: shaped on the canvas, not yet in the font — 6d § 2).
    */
-  setStep(id, { count, action, groups = [], extra = null, empty = "" }) {
+  setStep(id, { count, action, groups = [], extra = null, empty = "", note = "" }) {
     const step = this.steps[id];
+    setText(step.note, note);
+    step.note.hidden = !note;
     setText(step.count, count.text);
     step.count.classList.toggle("umarks-done", !!count.done);
     if (count.done && step.done === false) {

@@ -8,15 +8,17 @@
 // into the six steps of the panel:
 //
 //   ① target     how many glyphs, how many done
-//   ② draw       what is not in the font yet, and what is there but empty
+//   ② draw       what is to add to the font, and what is there but still to draw
 //   ③ anchors    drawn glyphs that Place anchors would still give anchors to
-//   ④ check      anchors out of date, and anchors moved by hand (6b § 1)
-//   ⑤ compose    composed glyphs ready to make, waiting for a part, impossible
-//   ⑥ update     composed glyphs made earlier that the anchors no longer match
+//   ④ check      anchors out of place, and anchors moved by hand (6b § 1)
+//   ⑤ compose    composed glyphs ready to make, waiting for a part, can't be built yet
+//   ⑥ update     composed glyphs made earlier that have moved off their anchors
 //
 // No step is a gate: a glyph whose part is not drawn yet is *waiting*, and
-// everything that is ready can be done meanwhile. « Impossible » is kept for
-// what will not happen without changing a rule or an anchor.
+// everything that is ready can be done meanwhile. « Can't be built yet » is
+// kept for what will not happen without changing a rule or an anchor. The
+// words are the designer's (claude/umarks-vocabulaire.md); the names in the
+// code (`impossible`, `stale`, `legacy`) are not renamed.
 
 import { anchorStem } from "./anchors.js";
 import { isLegacyRule, placeMark } from "./compose.js";
@@ -657,19 +659,23 @@ function sitsText(delta) {
   return parts.join(" and ");
 }
 
-/** « (Regular) », « in Regular, Italic », « in all 18 sources ». */
+/**
+ * « (Regular) », « (in Regular, Italic) », « (in all 18 sources) » — always in
+ * brackets, so that « since it was made (in both sources) » cannot be read as
+ * « made in both sources ».
+ */
 function inSources(sources, total) {
   if (total === 2 && sources.length === 2) {
-    return "in both sources";
+    return "(in both sources)";
   }
   if (total > 1 && sources.length === total) {
-    return `in all ${total} sources`;
+    return `(in all ${total} sources)`;
   }
   if (sources.length === 1) {
     return `(${sources[0]})`;
   }
   const shown = sources.length > 4 ? [...sources.slice(0, 3), `+${sources.length - 3}`] : sources;
-  return `in ${shown.join(", ")}`;
+  return `(in ${shown.join(", ")})`;
 }
 
 /**
@@ -710,7 +716,7 @@ export function staleReasons(rule, details) {
           if (Math.round(moved.dx)) {
             steps.push(`${Math.abs(Math.round(moved.dx))} u ${moved.dx > 0 ? "right" : "left"}`);
           }
-          lines.push({ text: `${moved.anchor} of ${moved.on} moved ${steps.join(", ")} since the last Make`, where });
+          lines.push({ text: `${moved.anchor} of ${moved.on} moved ${steps.join(", ")} since it was made`, where });
         }
         break;
       }
@@ -751,6 +757,64 @@ export function staleReasons(rule, details) {
     }
   }
   return [...byText].map(([text, where]) => (where.length ? `${text} ${inSources(where, total)}` : text));
+}
+
+const SINCE_MAKE = / since it was made( |$)/;
+
+/**
+ * The orange block of an open base, condensed (6d § 1): the cause once, then
+ * the glyphs it puts out of date, the detail per glyph behind a ▸. `entries`:
+ * [{glyph, reasons}], the reasons as staleReasons words them. A reason
+ * « top of a moved 175 u right since the last Make (Regular) » is a cause the
+ * glyphs share; « gravecomb sits 175 u left of top of a (Regular) » is the
+ * detail of one. A glyph with no such cause (a component moved by hand) is
+ * grouped by its offset, the accent's name taken out: « a component sits … ».
+ * [{cause, glyphs, details: [{glyph, text}]}], the largest group first.
+ */
+export function staleGroups(entries = []) {
+  const groups = new Map();
+  for (const entry of entries) {
+    const reasons = entry.reasons || [];
+    const moved = reasons.filter((reason) => SINCE_MAKE.test(reason));
+    const rest = reasons.filter((reason) => !SINCE_MAKE.test(reason));
+    const cause = moved.length
+      ? moved.join("; ")
+      : rest.map((reason) => reason.replace(/^\S+ sits /, "a component sits ")).join("; ") || "moved off its anchors";
+    if (!groups.has(cause)) {
+      groups.set(cause, { cause, glyphs: [], details: [] });
+    }
+    const group = groups.get(cause);
+    group.glyphs.push(entry.glyph);
+    group.details.push({ glyph: entry.glyph, text: (rest.length ? rest : reasons).join("; ") });
+  }
+  return [...groups.values()].sort((a, b) => b.glyphs.length - a.glyphs.length);
+}
+
+/** « 8 glyphs have moved off their anchors », « 1 glyph has moved off its anchors » — ⑥'s count. */
+export function movedOffText(count) {
+  return count === 1 ? "1 glyph has moved off its anchors" : `${count} glyphs have moved off their anchors`;
+}
+
+/**
+ * « 8 glyphs have moved off their anchors: agrave, aacute, acircumflex + 5
+ * more » — the line under a cause. The list
+ * cuts between two names, never inside one (decided 9 Nov.): as many whole
+ * names as fit in `budget` characters, at least one, then « + k more ». The
+ * rest is behind the ▸.
+ */
+export function staleListText(glyphs, budget = 56) {
+  const shown = [];
+  let length = 0;
+  for (const name of glyphs) {
+    const next = length + name.length + (shown.length ? 2 : 0);
+    if (shown.length && next > budget) {
+      break;
+    }
+    shown.push(name);
+    length = next;
+  }
+  const more = glyphs.length - shown.length;
+  return `${movedOffText(glyphs.length)}: ${shown.join(", ")}${more ? ` + ${more} more` : ""}`;
 }
 
 /** The names of the glyphs a rule puts in a composed glyph, sorted. */
@@ -855,15 +919,15 @@ export function problemCause(problem) {
     case "missing-anchor":
       switch (problem.lacks) {
         case "base":
-          return `${problem.on} has no ${problem.anchor}`;
+          return `needs ${problem.anchor} on ${problem.on}`;
         case "mark":
-          return `${problem.glyph} has no _${problem.anchor}`;
+          return `needs _${problem.anchor} on ${problem.glyph}`;
         case "both":
-          return `${problem.on} has no ${problem.anchor}, ${problem.glyph} has no _${problem.anchor}`;
+          return `needs ${problem.anchor} on ${problem.on} and _${problem.anchor} on ${problem.glyph}`;
         case "pair":
           return `${problem.on}'s ${problem.anchor} and ${problem.glyph}'s _${problem.anchor} are of variants that do not pair`;
         default:
-          return `${problem.on} has no ${problem.anchor}, or ${problem.glyph} has no _${problem.anchor}`;
+          return `needs ${problem.anchor} on ${problem.on}, or _${problem.anchor} on ${problem.glyph}`;
       }
     case "unknown-stack":
       return `${problem.glyph} sits on ${problem.on}, which the rule does not place`;
@@ -1182,7 +1246,20 @@ export function classifyTarget({
 
 // --- the sentences of the six lines -----------------------------------------
 
-/** What waits, for what: « 26 waiting for acutecomb, caroncomb ». */
+/**
+ * What a glyph waits for, in words: « gravecomb to be drawn », « anchors on e
+ * to be placed », both with « and ». `parts` are drawn, `anchorsOn` placed.
+ */
+export function waitingClause(parts = [], anchorsOn = []) {
+  return [
+    parts.length ? `${parts.join(", ")} to be drawn` : null,
+    anchorsOn.length ? `anchors on ${anchorsOn.join(", ")} to be placed` : null,
+  ]
+    .filter((text) => text)
+    .join(" and ");
+}
+
+/** What waits, for what: « 26 waiting for acutecomb, caroncomb to be drawn ». */
 export function waitingText(waiting) {
   if (!waiting.length) {
     return "";
@@ -1197,7 +1274,9 @@ export function waitingText(waiting) {
   }
   const names = [...parts];
   const listed = names.length > 4 ? `${names.slice(0, 3).join(", ")} +${names.length - 3}` : names.join(", ");
-  const what = [listed, anchorsToo ? "anchors" : null].filter((text) => text).join(", ");
+  const what = [listed ? `${listed} to be drawn` : null, anchorsToo ? "anchors to be placed" : null]
+    .filter((text) => text)
+    .join(" and ");
   return `${waiting.length} waiting for ${what}`;
 }
 
@@ -1209,7 +1288,7 @@ export function stepCounts(status, { sources = 1 } = {}) {
   const draw = status.draw;
   const drawParts = [];
   if (draw.absent.length) {
-    drawParts.push(`${draw.absent.length} not in the font yet`);
+    drawParts.push(`${plural(draw.absent.length, "glyph")} to add`);
   }
   if (draw.empty.length) {
     const bases = draw.empty.filter((entry) => entry.kind !== "accent").length;
@@ -1217,7 +1296,7 @@ export function stepCounts(status, { sources = 1 } = {}) {
     const split = [bases ? plural(bases, "base") : null, accents ? plural(accents, "accent") : null]
       .filter((text) => text)
       .join(", ");
-    drawParts.push(`${draw.empty.length} still empty (${split})`);
+    drawParts.push(`${draw.empty.length} still to draw (${split})`);
   }
   if (draw.incomplete?.length) {
     drawParts.push(`${draw.incomplete.length} missing in some sources`);
@@ -1229,9 +1308,9 @@ export function stepCounts(status, { sources = 1 } = {}) {
     const legacy = compose.legacy?.length || 0;
     let text = `${ready} ready`;
     if (legacy && legacy === ready) {
-      text += ready === 1 ? ", a legacy accent" : ", all legacy accents";
+      text += ready === 1 ? ", a spacing accent" : ", all spacing accents";
     } else if (legacy) {
-      text += legacy === 1 ? ", 1 of them a legacy accent" : `, ${legacy} of them legacy accents`;
+      text += legacy === 1 ? ", 1 of them a spacing accent" : `, ${legacy} of them spacing accents`;
     }
     composeParts.push(text);
   }
@@ -1239,7 +1318,7 @@ export function stepCounts(status, { sources = 1 } = {}) {
     composeParts.push(waitingText(compose.waiting));
   }
   if (compose.impossible.length) {
-    composeParts.push(`${compose.impossible.length} impossible`);
+    composeParts.push(`${compose.impossible.length} can't be built yet`);
   }
   if (compose.checking.length) {
     composeParts.push(`checking ${compose.checking.length}…`);
@@ -1253,44 +1332,52 @@ export function stepCounts(status, { sources = 1 } = {}) {
   // drawn by hand is done: said on the line, but it does not keep it open
   const drawn = compose.drawnByHand?.length || 0;
   return {
-    target: empty ? { text: "No glyph yet: Edit… adds some.", done: false } : targetLine(status),
+    target: empty ? { text: "This glyph set is empty — add glyphs with Edit….", done: false } : targetLine(status),
     draw: line(drawParts),
     anchors: line(
       status.anchors.glyphs.length
-        ? [`${plural(status.anchors.glyphs.length, "drawn glyph")} without their anchors`]
+        ? [
+            status.anchors.glyphs.length === 1
+              ? "1 drawn glyph has no anchors yet"
+              : `${status.anchors.glyphs.length} drawn glyphs have no anchors yet`,
+          ]
         : []
     ),
     // moved by hand is the designer's: said on the line, it does not keep it open
     check: line(
-      status.check.outOfDate.length ? [`${plural(status.check.outOfDate.length, "anchor")} out of date`] : [],
+      status.check.outOfDate.length ? [`${plural(status.check.outOfDate.length, "anchor")} out of place`] : [],
       status.check.movedByHand.length ? [`${status.check.movedByHand.length} moved by hand`] : []
     ),
     compose: line(composeParts, drawn ? [`${drawn} drawn by hand`] : []),
-    update: line(
-      status.update.stale.length ? [`${status.update.stale.length} out of date since the last Make`] : []
-    ),
+    update: line(status.update.stale.length ? [movedOffText(status.update.stale.length)] : []),
   };
 }
 
 /**
- * ①: « 239 glyphs · 180 for U+Marks (120 to compose, 60 parts) · 150 done » —
- * what of the target is the plug-in's (5 bis § 2), and how much of that is
+ * ①: « 239 glyphs · 132 accented glyphs, built from 21 parts · 81 done » —
+ * what of the glyph set is the plug-in's (5 bis § 2), and how much of that is
  * done. Done when all of it is.
  */
 function targetLine(status) {
   const { compose = 0, parts = 0 } = status.forPlugin || {};
   const ours = compose + parts;
   const text = ours
-    ? `${plural(status.glyphs, "glyph")} · ${ours} for U+Marks (${compose} to compose, ${plural(parts, "part")}) · ${status.done} done`
-    : `${plural(status.glyphs, "glyph")} · none for U+Marks`;
+    ? `${plural(status.glyphs, "glyph")} · ${plural(compose, "accented glyph")}, built from ${plural(parts, "part")} · ${status.done} done`
+    : `${plural(status.glyphs, "glyph")} · no accented glyphs`;
   return { text, done: ours > 0 && status.done === ours };
 }
 
-/** The label of a line's button: the whole of it, or the ticked part — « Make 5 ». */
-export function actionLabel(verb, all, selected = [], suffix = "") {
+/**
+ * The label of a line's button: the whole of it, or the ticked part — « Make
+ * 5 », « Add 8 missing glyphs » (`noun`: « missing glyph », plural by the count).
+ */
+export function actionLabel(verb, all, selected = [], noun = "") {
   const ticked = selected.filter((name) => all.includes(name));
   const count = ticked.length || all.length;
-  return count ? `${verb} ${count}${suffix}` : `${verb}${suffix}`;
+  if (!noun) {
+    return count ? `${verb} ${count}` : verb;
+  }
+  return count ? `${verb} ${plural(count, noun)}` : `${verb} ${noun}s`;
 }
 
 /** The names a line's action works on: the ticked ones, else all of them. */

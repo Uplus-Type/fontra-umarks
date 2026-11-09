@@ -5,24 +5,25 @@
 //   e   base · in the target
 //   Ghosts    [ all 9 ▾ ]                      needs 1 and 2
 //   Composes  è é ê ë ē ė ę ě                  need 3: ✓ made · ○ to make · possible
-//             (a click: the rule, its accent and anchor, add to the target or take out)
-//   ⚠ top of e moved: 3 out of date            [Recompute 3]
+//             (a click: the rule, its accent and anchor, add to the glyph set or take out)
+//   ⚠ top of e moved 20 u up since it was made   [Update 3]
 //
 // On a composed glyph (`eacute`): its rule (base, accent @ anchor, editable,
-// suggested or manual, Keep), its state (made, out of date by how much,
-// waiting for what, impossible and why), Make, Recompute, Decompose; the ghost
+// suggested or manual, Keep), its state (made, moved off its anchors by how
+// much, waiting for what, can't be built yet and why), Make, Update, Decompose; the ghost
 // is the result of the rule. On an accent (`acutecomb`): the bases of the rules
 // that use it, all as ghosts, and the same menu to keep only one.
 //
 // This file only draws and reports clicks.
 
+import { staleListText } from "./target.js";
 import { button, element, replaceChildren, select } from "./ui.js";
 
 const STATUS_MARKS = { made: "✓", "to-make": "○", possible: "·" };
 const STATUS_TITLES = {
   made: "made: in the font",
   "to-make": "in the glyph set, to make",
-  possible: "possible, not in the glyph set",
+  possible: "possible — not in your glyph set",
 };
 
 function provenanceBadge(rule) {
@@ -42,6 +43,8 @@ export class GlyphView {
     this.callbacks = callbacks;
     this.element = element("div", { class: "umarks-glyph-view" });
     this.selectedComposable = null;
+    // the causes whose ▸ is open, kept across a re-render (6d § 1)
+    this.openCauses = new Set();
   }
 
   /** `info`: null when no glyph is open, else what marks-panel.js worked out. */
@@ -100,8 +103,8 @@ export class GlyphView {
   /** A part not drawn everywhere: where and why (5 bis § 5). */
   drawingRow(drawing) {
     const what = {
-      absent: "not in the font yet",
-      empty: "still empty",
+      absent: "to add",
+      empty: "still to draw",
       incomplete: "missing in some sources — usable, Make leaves those out",
     }[drawing.status] || drawing.status;
     return element("div", { class: "umarks-glyph-row-line" }, [
@@ -173,7 +176,7 @@ export class GlyphView {
       combMenu.dataset.field = "legacy-comb";
       combMenu.disabled = options.editable === false;
       return element("div", { class: "umarks-rule-line", "data-role": "rule" }, [
-        element("span", { class: "umarks-base", text: "legacy accent of" }),
+        element("span", { class: "umarks-base", text: "spacing accent, from" }),
         combMenu,
       ]);
     }
@@ -198,7 +201,7 @@ export class GlyphView {
         disabled: !info.canMake,
         title: "Make this glyph from its rule",
       }),
-      button("Recompute", () => this.callbacks.onRecompute?.([info.glyphName]), {
+      button("Update", () => this.callbacks.onRecompute?.([info.glyphName]), {
         className: "umarks-button--small",
         disabled: !info.canRecompute,
         title: "Put the components back where the anchors say",
@@ -227,6 +230,10 @@ export class GlyphView {
         }),
       ]),
       info.note ? element("div", { class: "umarks-note", text: info.note }) : null,
+      // an information, not a warning (6d § 2)
+      info.shapingNote
+        ? element("div", { class: "umarks-note umarks-shaping-note", "data-role": "shaping-note", text: info.shapingNote })
+        : null,
       element("div", { class: "umarks-buttons" }, actions),
     ]);
   }
@@ -277,7 +284,7 @@ export class GlyphView {
    */
   anchorComposesBlock(info) {
     return element("div", { class: "umarks-anchor-composes", "data-role": "anchor-composes" }, [
-      element("div", { class: "umarks-subheading", text: "From its anchors" }),
+      element("div", { class: "umarks-subheading", text: "What its anchors would allow" }),
       ...info.anchorComposes.map((group) =>
         element("div", { class: "umarks-glyph-row-line" }, [
           element("span", { class: "umarks-glyph-label", text: group.anchor }),
@@ -384,13 +391,74 @@ export class GlyphView {
     ]);
   }
 
+  /**
+   * The glyphs of a base its anchors no longer match, condensed (6d § 1): per
+   * cause, the cause once, then « 8 glyphs have moved off their anchors: agrave, … » on one
+   * line that cuts cleanly, the detail per glyph behind a ▸; six lines at
+   * most, the rest scrolls.
+   */
+  staleBlock(warning, recompute) {
+    const groups = warning.groups.map((group) => {
+      const open = this.openCauses.has(group.cause);
+      const list = staleListText(group.glyphs);
+      const toggle = element("button", {
+        class: `umarks-stale-toggle${open ? " open" : ""}`,
+        "data-field": "stale-toggle",
+        title: open ? "Hide the detail" : "The detail, glyph by glyph",
+        text: "▸",
+        onclick: () => {
+          if (this.openCauses.has(group.cause)) {
+            this.openCauses.delete(group.cause);
+          } else {
+            this.openCauses.add(group.cause);
+          }
+          this.set(this.info);
+        },
+      });
+      return element("div", { class: "umarks-stale-group", "data-role": "stale-group" }, [
+        element("div", { class: "umarks-stale-cause", "data-role": "stale-cause", text: `⚠ ${group.cause}` }),
+        element("div", { class: "umarks-stale-line" }, [
+          element("span", { class: "umarks-stale-list", "data-role": "stale-list", text: list, title: list }),
+          toggle,
+        ]),
+        open
+          ? element(
+              "div",
+              { class: "umarks-stale-details", "data-role": "stale-details" },
+              group.details.map((detail) =>
+                element(
+                  "div",
+                  {
+                    class: "umarks-stale-detail",
+                    title: "Double-click to open the glyph",
+                    ondblclick: () => this.callbacks.onOpen?.(detail.glyph),
+                  },
+                  [
+                    element("span", { class: "umarks-row-name", text: detail.glyph }),
+                    element("span", { class: "umarks-row-detail", text: detail.text }),
+                  ]
+                )
+              )
+            )
+          : null,
+      ]);
+    });
+    return element("div", { class: "umarks-warning umarks-warning--stale", "data-role": "warning" }, [
+      element("div", { class: "umarks-warning-body" }, groups),
+      recompute,
+    ]);
+  }
+
   warningRow(warning) {
     const recompute = warning.names?.length
-      ? button(warning.names.length > 1 ? `Recompute ${warning.names.length}` : "Recompute", () => this.callbacks.onRecompute?.(warning.names), {
+      ? button(warning.names.length > 1 ? `Update ${warning.names.length}` : "Update", () => this.callbacks.onRecompute?.(warning.names), {
           className: "umarks-button--small",
           title: "Put the components back where the anchors say",
         })
       : null;
+    if (warning.groups) {
+      return this.staleBlock(warning, recompute);
+    }
     if (!warning.choice) {
       return element("div", { class: "umarks-warning", "data-role": "warning" }, [
         element("span", { text: `⚠ ${warning.text}` }),
@@ -404,7 +472,7 @@ export class GlyphView {
       element("div", {
         class: "umarks-note",
         "data-role": "offset-choice",
-        text: choice.left ? "Left as it is: ⑥ goes on counting it until it is recomputed." : choice.text,
+        text: choice.left ? "Left as it is: ⑥ goes on counting it until it is updated." : choice.text,
       }),
       element("div", { class: "umarks-buttons" }, [
         recompute,

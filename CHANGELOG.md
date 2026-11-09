@@ -1,6 +1,42 @@
 # Changelog
 
-## 0.1.2 — unreleased
+## 0.1.3 — unreleased
+
+- **The designer's words.** The panel says what you do or see, not what the code does
+  (`claude/umarks-vocabulaire.md`, decided 9 Nov. 9:42). ② *Add 15 missing glyphs* (was *Create 15
+  empty*), « 15 glyphs to add · 6 still to draw »; ③ « 11 drawn glyphs have no anchors yet »;
+  ④ « 2 anchors out of place »; ⑤ « 32 waiting for A, E to be drawn · 61 can't be built yet », and
+  a reason that names what to do — « needs top on a », « needs _top on acute »; ⑥ *Update 8* (was
+  *Recompute 8*), « 8 glyphs have moved off their anchors », « top of e moved 20 u up since it was
+  made (in both sources) ». ① says « 132 accented glyphs, built from 21 parts », and an empty glyph
+  set says « This glyph set is empty — add glyphs with Edit… ».
+- The open glyph: « spacing accent, from acutecomb » (was « legacy accent of »), « What its anchors
+  would allow », « possible — not in your glyph set », « drawn by hand — tick it to replace its
+  drawing with the components of its rule ». The foot says « Added 15 glyphs » and « Updated 8
+  glyphs ». The first-pass messages say the same things in the same words.
+- Kept as they were: Make, Place anchors, Check anchors, Re-place, Undo last batch, drawn by hand,
+  moved by hand, Ghosts, Composes, Sits on, Keep, auto. The names in the code and the keys of the
+  document do not change: nothing to migrate.
+- The guide is rewritten in the same voice, word for word (`docs/guide.txt`). Its captures still
+  show the old words until they are taken again — see `docs/brief.md` § 9, step 6e.
+- Tests: the Node tests read the new words, and `tests/test_no_old_words.mjs` sweeps the client
+  and refuses the old ones in every string a person reads.
+
+- The orange block of an open base says the cause once — « top of a moved 175 u right since the
+  last Make (Regular) » — then « 8 glyphs out of date: agrave, aacute, … » on one line, the
+  detail per accent behind a ▸. Different causes are grouped by cause; the block is six lines
+  at most and scrolls beyond. The foot's « Last: … ▸ » does the same for a long batch.
+- With Fontra's text shaping on, the canvas already shows à from a + gravecomb and your
+  anchors, though agrave is not in the font. A ready glyph that is absent now says so in one
+  line when open, and ⑤ says it once: the canvas is a preview, Make writes the glyph.
+- The guide: « Why does the canvas already show à? », and in ⑥ the ghosts that follow the
+  anchor at once.
+- Tests: the Fontra server of the panel's tests is killed on ⌃C and on exception, two seconds
+  after asking it to stop; none is left behind.
+- The orange block's list of glyphs cuts between two names, never inside one (« … adieresis,
+  aring + 2 more »); the cause and the list stay put, only the detail behind the ▸ scrolls.
+
+## 0.1.2 — 2026-11-09
 
 - Nothing written into the font's `customData` holds a `null` any more: a from-scratch glyph set
   has no `from`, a document without an active glyph set has no `activeTarget`. A `.fontra` file

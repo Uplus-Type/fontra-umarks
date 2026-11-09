@@ -4,11 +4,11 @@
 //
 //   ① Target   [ GF Latin Core ▾ ] + 3 − 1   [Edit…]
 //              312 glyphs · 2 sources · 271 done
-//   ▸ ② Draw      8 not in the font yet · 10 still empty    [Create 8 empty]
-//   ▸ ③ Anchors   11 drawn glyphs without their anchors    [Place anchors]
-//   ▸ ④ Check     12 anchors out of date · 3 moved by hand   [Re-place 12]
-//   ▸ ⑤ Compose   38 ready · 3 impossible                 [Make 38]
-//   ▸ ⑥ Update    3 out of date since the last Make       [Recompute 3]
+//   ▸ ② Draw      8 glyphs to add · 10 still to draw     [Add 8 missing glyphs]
+//   ▸ ③ Anchors   11 drawn glyphs have no anchors yet    [Place anchors]
+//   ▸ ④ Check     12 anchors out of place · 3 moved by hand   [Re-place 12]
+//   ▸ ⑤ Compose   38 ready · 3 can't be built yet        [Make 38]
+//   ▸ ⑥ Update    3 glyphs have moved off their anchors  [Update 3]
 //   ───────────────────
 //   e  (the open glyph)
 //   ───────────────────
@@ -68,7 +68,7 @@ import { importLegacyRulesJSON } from "./legacy-import.js";
 import { chosenForOverwrite, previewSVG, sheetRows, sheetTitle, splitForOverwrite } from "./overwrite.js";
 import { ghostRules } from "./marks-layer.js";
 import { PathView } from "./path-view.js";
-import { batchReport, outcomeOf } from "./report.js";
+import { batchReport, condensedRows, CONDENSE_FROM, outcomeOf } from "./report.js";
 import {
   RULES_KEY,
   activeTarget,
@@ -122,9 +122,11 @@ import {
   matrixRules,
   replaceEntries,
   ruleNameFor,
+  staleGroups,
   staleReasons,
   stepCounts,
   targetEntries,
+  waitingClause,
   withoutText,
 } from "./target.js";
 import { button, checkbox, element, replaceChildren } from "./ui.js";
@@ -147,6 +149,7 @@ import {
   previewSentence,
   selectedPresets,
   undoResultText,
+  addedText,
   variantCategories,
   variantChoices,
   withPresetField,
@@ -242,6 +245,11 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       this.sceneController.sceneSettingsController.addKeyListener(["projectGlyphSets"], () =>
         this.scheduleRefresh()
       );
+      // Fontra's text shaping (6d § 2): the canvas composes what the font lacks
+      this.sceneController.sceneSettingsController.addKeyListener(["applyTextShaping"], () => {
+        this.render();
+        this.scheduleGlyph?.();
+      });
 
       this.loadPresets();
       this.render();
@@ -404,6 +412,21 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
 
     get target() {
       return activeTarget(this.rulesData);
+    }
+
+    /**
+     * Fontra shapes the canvas text (« Apply text shaping »): HarfBuzz then
+     * shows à from a + gravecomb by the mark features Fontra builds from the
+     * anchors, whether or not agrave is in the font (6d § 2).
+     */
+    get textShaping() {
+      return !!this.editorController.sceneSettings?.applyTextShaping;
+    }
+
+    /** The ready glyphs the font does not have yet: the canvas may shape them, the font lacks them. */
+    readyAbsent(ready = []) {
+      const glyphMap = this.fontController.glyphMap;
+      return ready.filter((name) => !glyphMap[name]);
     }
 
     get currentGlyphName() {
@@ -700,13 +723,13 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       view.setStep("draw", {
         count: counts.draw,
         action: {
-          label: actionLabel("Create", absent, drawSelected, " empty"),
+          label: actionLabel("Add", absent, drawSelected, "missing glyph"),
           enabled: absent.length > 0 && !busy,
-          title: "Create the glyphs that are not in the font yet, empty, to draw them",
+          title: "Add the glyphs the font is missing, empty, to find them in the font overview and draw them",
         },
         groups: [
           {
-            title: "Not in the font yet",
+            title: "To add",
             rows: status.draw.absent.map((entry) => ({
               glyph: entry.glyph,
               detail: entry.kind === "glyph" ? "" : entry.kind,
@@ -714,7 +737,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
             })),
           },
           {
-            title: "Still empty — to draw",
+            title: "Still to draw",
             rows: status.draw.empty.map((entry) => ({
               glyph: entry.glyph,
               // where and why (5 bis § 5)
@@ -766,7 +789,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
         },
         groups: [
           {
-            title: "Out of date — still where Place put them",
+            title: "Out of place — still where Place put them",
             rows: placedRows(check.outOfDate, "stale", sourceName, sources.length).map((row) => ({
               ...row,
               selectable: true,
@@ -789,6 +812,11 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       const composeSelected = this.selectedFor("compose", [...ready, ...drawn]);
       view.setStep("compose", {
         count: counts.compose,
+        // once, in a half line (6d § 2): the canvas is a preview, the font lacks them
+        note:
+          this.textShaping && this.readyAbsent(ready).length
+            ? "Shaped on the canvas, not yet in the font: Make writes them."
+            : "",
         action: {
           label: composeSelected.length ? `Make ${composeSelected.length}` : actionLabel("Make", ready),
           enabled: (ready.length > 0 || composeSelected.length > 0) && !busy,
@@ -821,12 +849,12 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
             title: "Waiting",
             rows: status.compose.waiting.map((entry) => ({
               glyph: entry.glyph,
-              detail: `waiting for ${[...entry.parts, ...(entry.anchorsOn || []).map((name) => `anchors on ${name}`)].join(", ")}`,
+              detail: `waiting for ${waitingClause(entry.parts, entry.anchorsOn)}`,
               state: "waiting",
             })),
           },
           {
-            title: "Impossible",
+            title: "Can't be built yet",
             // one short line; the causes on hover when there are several (5 bis § 7)
             rows: status.compose.impossible.map((entry) => ({
               glyph: entry.glyph,
@@ -843,7 +871,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       view.setStep("update", {
         count: counts.update,
         action: {
-          label: actionLabel("Recompute", stale, updateSelected),
+          label: actionLabel("Update", stale, updateSelected),
           enabled: stale.length > 0 && !busy,
           title: "Put the components back where the anchors say",
         },
@@ -879,7 +907,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
           tips.push({
             id: "draw",
             text: absent
-              ? `Draw the missing parts in Fontra, or Create ${absent} empty to have them in the font overview.`
+              ? "Draw the missing parts in Fontra, or add them now, empty, to find them in the font overview."
               : "Draw the missing parts in Fontra.",
           });
         }
@@ -891,7 +919,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
         }
         const ready = status.compose.ready.length;
         if (ready && !this.madeOnce()) {
-          tips.push({ id: "make", text: `Make ${ready} writes the composed glyphs; Undo last batch takes them back.` });
+          tips.push({ id: "make", text: "Make writes the accented glyphs that are ready; Undo last batch takes them back." });
         }
       }
       return tips.find((tip) => !closed.includes(tip.id)) ?? null;
@@ -916,7 +944,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
     }
 
     idleLabel(id) {
-      return { draw: "Create empty", anchors: "Place anchors", check: "Re-place", compose: "Make", update: "Recompute" }[id];
+      return { draw: "Add missing glyphs", anchors: "Place anchors", check: "Re-place", compose: "Make", update: "Update" }[id];
     }
 
     /** `e + acutecomb@top`, for a row. */
@@ -926,7 +954,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
         return "";
       }
       if (isLegacyRule(rule)) {
-        return `legacy accent of ${rule.legacy}`;
+        return `spacing accent, from ${rule.legacy}`;
       }
       return [rule.base, ...(rule.append || []), ...(rule.marks || []).map((mark) => `${mark.glyph}@${mark.on || mark.anchor}`)].join(" + ");
     }
@@ -1394,8 +1422,8 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       const absent = this.status.draw.absent.map((entry) => entry.glyph);
       const names = actionNames(absent, this.pathView.selected("draw"));
       const glyphData = await this.ensureGlyphData();
-      const label = `Create ${plural(names.length, "empty glyph")}`;
-      await this.withBusy("creating…", async () => {
+      const label = `Add ${plural(names.length, "missing glyph")}`;
+      await this.withBusy("adding…", async () => {
         const result = await createEmptyGlyphs(
           this.editorController,
           names.map((glyph) => {
@@ -1410,7 +1438,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
           }),
           label
         );
-        this.report([batchResultText(label, result)]);
+        this.report([addedText(result)]);
       });
     }
 
@@ -1632,12 +1660,12 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
       const stale = this.status.update.stale;
       const chosen = names || actionNames(stale.map((entry) => entry.glyph), this.pathView.selected("update"));
       const glyphData = await this.ensureGlyphData();
-      await this.withBusy(`recomputing ${chosen.length}…`, async () =>
-        this.inBatch(`Recompute ${chosen.length}`, async (batch) => {
+      await this.withBusy(`updating ${chosen.length}…`, async () =>
+        this.inBatch(`Update ${chosen.length}`, async (batch) => {
           const outcomes = [];
           try {
             for (const [index, glyphName] of chosen.entries()) {
-              this.pathView.setBusy(`recomputing ${index + 1}/${chosen.length}: ${glyphName}`);
+              this.pathView.setBusy(`updating ${index + 1}/${chosen.length}: ${glyphName}`);
               const entry = stale.find((candidate) => candidate.glyph === glyphName);
               const rule = this.rulesData.rules[glyphName];
               let result = null; // no rule: outcomeOf says so
@@ -1653,7 +1681,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
               outcomes.push(outcomeOf(glyphName, result));
             }
           } finally {
-            this.reportBatch(batchReport(`Recompute ${chosen.length}`, outcomes));
+            this.reportBatch(batchReport(`Update ${chosen.length}`, outcomes));
           }
         })
       );
@@ -1713,6 +1741,39 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
         nodes.push(
           element("div", { class: "umarks-subheading", text: `${group.title} · ${group.rows.length}` })
         );
+        if (group.rows.length >= CONDENSE_FROM) {
+          // many glyphs (6d § 1): each detail once, its glyphs on one line
+          for (const { detail, glyphs } of condensedRows(group.rows)) {
+            if (detail) {
+              nodes.push(element("div", { class: "umarks-report-cause", text: detail }));
+            }
+            const names = glyphs.flatMap((glyph, index) => [
+              index ? ", " : "",
+              element("span", {
+                class: "umarks-report-name",
+                dataset: { glyphName: glyph },
+                text: glyph,
+                title: "Double-click to open the glyph",
+                ondblclick: (event) => {
+                  event.stopPropagation();
+                  this.openGlyph(glyph);
+                },
+              }),
+            ]);
+            nodes.push(
+              element(
+                "div",
+                {
+                  class: `umarks-report-names umarks-report-row--${group.kind}`,
+                  title: glyphs.join(", "),
+                  onclick: (event) => event.stopPropagation(),
+                },
+                [`${glyphs.length} ${glyphs.length === 1 ? "glyph" : "glyphs"}: `, ...names].filter((part) => part !== "")
+              )
+            );
+          }
+          continue;
+        }
         for (const row of group.rows) {
           nodes.push(
             element(
@@ -2159,6 +2220,21 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
         const state = this.composedState(glyphName, rule, details, where);
         Object.assign(info, state);
         info.canMake = details.state !== "impossible" && !where?.parts?.length;
+        // ready but absent, shaping on (6d § 2): the canvas is right, the font has a hole
+        const character = codePointOf(glyphName) ? String.fromCodePoint(codePointOf(glyphName)) : null;
+        if (
+          this.textShaping &&
+          character &&
+          details.state === "missing" &&
+          state.stateKind === "missing" &&
+          !glyphMap[glyphName] &&
+          !isLegacyRule(rule)
+        ) {
+          const parts = [rule.base, ...(rule.append || []), ...(rule.marks || []).map((mark) => mark.glyph)];
+          info.shapingNote =
+            `The canvas already shows ${character} by shaping ${parts.join(" + ")} from your anchors; ` +
+            `${glyphName} itself is not in the font yet — Make writes it.`;
+        }
         info.canRecompute = details.state === "stale" || details.state === "ok";
         info.canDecompose = details.state === "ok" || details.state === "stale";
         if (state.stateText === "drawn by hand") {
@@ -2171,17 +2247,17 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
           // explicitly: Recompute, or leave it — ⑥ will go on counting it,
           // there is no offset per source in this version (5 bis § 6)
           info.warning = {
-            text: `out of date: ${state.stateLines.join("; ")}`,
+            text: `moved off its anchors: ${state.stateLines.join("; ")}`,
             names: [glyphName],
             choice: needsMake(details)
               ? null
               : {
                   glyph: glyphName,
                   left: this.leftAsIs.has(glyphName),
-                  text: "Recompute puts it back on the anchor; left as it is, ⑥ goes on counting it.",
+                  text: "Update puts it back on the anchor; left as it is, ⑥ goes on counting it.",
                 },
           };
-          info.stateLines = ["out of date since the last Make"];
+          info.stateLines = ["moved off its anchors since it was made"];
         }
       } else if (kind === "base" || (!kind && glyphData)) {
         const composes = composablesFor(glyphName, { font, glyphData, rules, targetNames });
@@ -2208,9 +2284,9 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
         // the composed glyphs of this base that its anchors no longer match
         const ofThis = stale.filter((entry) => rules[entry.glyph]?.base === glyphName);
         if (ofThis.length) {
-          const reasons = [...new Set(ofThis.flatMap((entry) => entry.reasons))];
+          // condensed (6d § 1): the cause once, the glyphs on one line, the detail behind ▸
           info.warning = {
-            text: `${reasons.join("; ")}: ${plural(ofThis.length, "glyph")} out of date (${ofThis.map((entry) => entry.glyph).join(", ")})`,
+            groups: staleGroups(ofThis),
             names: ofThis.map((entry) => entry.glyph),
           };
         }
@@ -2238,12 +2314,15 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
         return {
           stateText: "drawn by hand",
           stateKind: "ok",
-          stateLines: ["drawn by hand, not composed: Make asks before replacing it"],
+          stateLines: ["drawn by hand — tick it to replace its drawing with the components of its rule"],
         };
       }
       if (where?.status === "waiting") {
-        const what = [...where.parts, ...(where.anchorsOn || []).map((name) => `anchors on ${name}`)];
-        return { stateText: "waiting", stateKind: "waiting", stateLines: [`waiting for ${what.join(", ")}`] };
+        return {
+          stateText: "waiting",
+          stateKind: "waiting",
+          stateLines: [`waiting for ${waitingClause(where.parts, where.anchorsOn)}`],
+        };
       }
       switch (details?.state) {
         case "ok":
@@ -2256,7 +2335,7 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
           };
         case "impossible":
           return {
-            stateText: "impossible",
+            stateText: "can't be built yet",
             stateKind: "impossible",
             stateLines: problemLines(details.problems, details.sourceCount),
           };
@@ -2265,10 +2344,10 @@ export function makeMarksPanel(Panel, pluginPath, ghostsLayer) {
             return {
               stateText: "drawn by hand",
               stateKind: "ok",
-              stateLines: ["drawn by hand, not composed: Make asks before replacing it"],
+              stateLines: ["drawn by hand — tick it to replace its drawing with the components of its rule"],
             };
           }
-          return { stateText: "out of date", stateKind: "stale", stateLines: staleReasons(rule, details) };
+          return { stateText: "moved off its anchors", stateKind: "stale", stateLines: staleReasons(rule, details) };
         default:
           return { stateText: "", stateKind: "pending", stateLines: ["checking…"] };
       }

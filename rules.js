@@ -90,7 +90,7 @@ export function normalizeRule(glyphName, raw) {
   // a legacy accent (step 5): one component of its `…comb`, no base, no mark
   if (typeof raw.legacy === "string" && raw.legacy) {
     if (raw.legacy === glyphName) {
-      return { rule: null, complaints: [`${glyphName}: a legacy accent cannot be made of itself`] };
+      return { rule: null, complaints: [`${glyphName}: a spacing accent cannot be made of itself`] };
     }
     const rule = { legacy: raw.legacy };
     if (typeof raw.category === "string" && raw.category) {

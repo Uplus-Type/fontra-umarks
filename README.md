@@ -24,11 +24,11 @@ The panel is the ◌ tab of the right sidebar.
 ## The path
 
 1. **Glyph set** — the glyph set you want to end up with: one of your project's, one of yours, a Fontra preset, or from scratch.
-2. **Draw** — what the rules need and the font lacks. *Create N empty*.
-3. **Anchors** — the drawn glyphs without their anchors, and where each anchor goes. *Place anchors*.
-4. **Check** — anchors out of date since Place put them, and anchors moved by hand. *Re-place N*.
-5. **Compose** — the glyphs ready to make, those waiting for a part, those impossible and why. *Make N*.
-6. **Update** — the glyphs their anchors no longer match. *Recompute N*.
+2. **Draw** — the letters and accents the accented glyphs need and the font does not have yet. *Add N missing glyphs*.
+3. **Anchors** — the drawn glyphs that have no anchors yet, and where each anchor goes. *Place anchors*.
+4. **Check** — anchors that are out of place since Place put them, and anchors moved by hand. *Re-place N*.
+5. **Compose** — the accented glyphs that are ready, those waiting for a part to be drawn, those that can't be built yet, and why. *Make N*.
+6. **Update** — the glyphs that have moved off their anchors. *Update N*.
 
 ## Guide
 

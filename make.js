@@ -419,7 +419,7 @@ export async function recomputeGlyph(editorController, glyphName, rule, adapter,
           record.layers.push({ layerName, added: false, before, after: layerSignature(layerGlyph) });
         }
       }
-      return batch?.label ?? `Recompute ${glyphName}`;
+      return batch?.label ?? `Update ${glyphName}`;
     }
   );
   if (record.layers.length) {

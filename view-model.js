@@ -423,7 +423,7 @@ export function checkReportLines(report, sourceNames = {}, { limit = 12 } = {}) 
     ),
   ];
   const head = lines.length
-    ? `Check: ${report.missing.length} missing, ${report.suspicious.length} far from their position.`
+    ? `Check: ${report.missing.length} missing, ${report.suspicious.length} out of place.`
     : "Check: nothing to report.";
   const shown = lines.slice(0, limit);
   if (lines.length > limit) {
@@ -438,6 +438,19 @@ export function variantCategories(settings) {
     category,
     suffix,
   }));
+}
+
+/**
+ * ②'s line in the foot: « Added 15 glyphs (a, b, …). » — what the designer did,
+ * where `batchResultText` says what a batch wrote.
+ */
+export function addedText(result) {
+  const created = result.created || [];
+  const parts = [`Added ${plural(created.length, "glyph")}${created.length ? ` (${created.join(", ")})` : ""}`];
+  if (result.skipped?.length) {
+    parts.push(`${result.skipped.length} already there`);
+  }
+  return `${parts.join("; ")}.`;
 }
 
 /** One line for what a finished batch did. */

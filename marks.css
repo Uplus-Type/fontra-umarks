@@ -493,6 +493,96 @@ button[hidden] {
   background-color: #a86c0014;
 }
 
+/* a base's glyphs out of date, condensed (6d § 1): the cause once, the
+   glyphs on one line that cuts cleanly, the detail behind ▸; six lines at
+   most, the rest scrolls */
+.umarks-warning--stale {
+  /* the cause and the list take the whole width; Recompute goes under them */
+  flex-direction: column;
+  align-items: stretch;
+  --umarks-line: 1.4em;
+}
+
+.umarks-warning--stale > .fontra-button {
+  align-self: flex-end;
+}
+
+.umarks-warning-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  line-height: var(--umarks-line);
+}
+
+
+.umarks-stale-cause {
+  font-weight: bold;
+  overflow-wrap: anywhere;
+}
+
+.umarks-stale-line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4em;
+  align-items: baseline;
+}
+
+.umarks-stale-list {
+  /* already cut between two names by staleListText: it wraps, never mid-name */
+  overflow-wrap: anywhere;
+}
+
+.umarks-stale-toggle {
+  border: none;
+  background: none;
+  padding: 0 0.2em;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: transform 120ms;
+}
+
+.umarks-stale-toggle.open {
+  transform: rotate(90deg);
+}
+
+/* the cause and the list stay put; only the detail, open, scrolls (six lines) */
+.umarks-stale-details {
+  display: flex;
+  flex-direction: column;
+  padding-left: 0.6em;
+  max-height: calc(6 * var(--umarks-line));
+  overflow-y: auto;
+}
+
+.umarks-stale-detail {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.6em;
+  align-items: baseline;
+  cursor: default;
+}
+
+.umarks-stale-detail .umarks-row-detail {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* a long batch, unfolded in the foot: a detail once, its glyphs on one line */
+.umarks-report-cause {
+  overflow-wrap: anywhere;
+}
+
+.umarks-report-names {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 0.3em;
+}
+
 .umarks-current {
   display: flex;
   flex-direction: column;
@@ -771,7 +861,9 @@ input.umarks-name,
   flex-direction: column;
   gap: 0.15em;
   padding: 0.3em 0 0 0.3em;
-  max-height: 30vh;
+  /* six lines at most, the rest scrolls (6d § 1) */
+  line-height: 1.4em;
+  max-height: calc(6 * 1.4em);
   overflow-y: auto;
 }
 
@@ -866,4 +958,18 @@ input.umarks-name,
   text-align: right;
   padding-top: 0.3em;
   font-variant-numeric: tabular-nums;
+}
+
+/* ⑤'s half line, and the open glyph's line, when Fontra shapes the canvas
+   (6d § 2): an information, in the colour of a note, not a warning */
+.umarks-step-note {
+  padding: 0.1em 0.3em 0.3em;
+}
+
+.umarks-step-note[hidden] {
+  display: none;
+}
+
+.umarks-shaping-note {
+  overflow-wrap: anywhere;
 }
